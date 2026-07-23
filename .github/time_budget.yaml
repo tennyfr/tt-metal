@@ -252,6 +252,11 @@ runtime:
     # measured, budgeted at 10 min in runtime_perf_tests.yaml).
     wh_n300_civ2: 65
     bh_p150_perf: 50
+  # Profiler-build runtime perf jobs. Currently just runtime_perf_tensor_accessor: one
+  # full-chip get_noc_addr benchmark whose per-SKU timeout is 10 min, so the budget is 10.
+  perf_profiler:
+    wh_n300_civ2: 10
+    bh_p150_perf: 10
 
 triage:
   merge_gate:
