@@ -4,6 +4,8 @@
 
 #include "regime_a_matmul_device_operation.hpp"
 
+#include <cstdlib>
+
 #include <tt-metalium/tt_metal.hpp>
 #include <tt-metalium/constants.hpp>
 #include "ttnn/tensor/tensor_ops.hpp"
@@ -256,12 +258,22 @@ RegimeAMatmulDeviceOperation::invoke(
     const std::optional<Tensor>& fused_ternary_input_a,
     const std::optional<Tensor>& fused_ternary_input_b,
     int32_t chunks) {
+    // TEST-ONLY in0-read ablation: read the mask from the env var so it stays out of the public API yet is
+    // captured in operation_attributes (and thus the reflection program-cache hash). Unset/0 => production.
+    uint32_t diag_in0_read_mask = 0;
+    if (const char* e = std::getenv("TT_REGIME_A_DIAG_IN0")) {
+        const int v = std::atoi(e);
+        if (v == 1 || v == 2) {
+            diag_in0_read_mask = static_cast<uint32_t>(v);
+        }
+    }
     return {
         operation_attributes_t{
             .config = config,
             .fused_activation = std::move(fused_activation),
             .fused_ternary_scalar = fused_ternary_scalar,
-            .chunks = chunks},
+            .chunks = chunks,
+            .diag_in0_read_mask = diag_in0_read_mask},
         tensor_args_t{
             .input_tensor = input_tensor,
             .weight_tensor = weight_tensor,

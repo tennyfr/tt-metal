@@ -26,6 +26,14 @@ struct RegimeAMatmulParams {
     std::optional<float> fused_ternary_scalar;
     int32_t chunks = 1;  // output column-split count (regime_a_matmul_split); 1 => single output tensor
 
+    // ---- TEST-ONLY in0-read ablation diagnostic (NOT public API). 0 => production (byte-identical: no
+    // kernel defines, no extra runtime args). 1 => SKIP_REDUNDANT_IN0_DRAM_READS (only the owner Ns group
+    // ns==0 issues in0 DRAM reads; ns>0 groups skip their duplicate reads). 2 => SKIP_ALL_IN0_DRAM_READS.
+    // Set from the TT_REGIME_A_DIAG_IN0 env var in invoke(); participates in the reflection program-cache
+    // hash so mask 0/1/2 compile to distinct cached programs. Diagnostic outputs are intentionally invalid
+    // (skipped reads leave stale L1); correctness is asserted only for mask 0. ----
+    uint32_t diag_in0_read_mask = 0;
+
     // NOTE: numerics are FIXED production behavior, not options — BF16 in/out, HiFi2, FP32 dest-accumulation,
     // DRAM-interleaved output. There is deliberately no output dtype / memory_config / compute_kernel_config
     // here: they were previously accepted but ignored (an API-correctness hazard), so they are not part of the

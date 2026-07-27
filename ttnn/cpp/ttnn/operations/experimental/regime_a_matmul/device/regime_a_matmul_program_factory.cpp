@@ -304,6 +304,19 @@ RegimeAMatmulProgramFactory::cached_program_t RegimeAMatmulProgramFactory::creat
     // byte-identical no-fusion compile. ----
     std::map<std::string, std::string> wdefs;
 
+    // ---- TEST-ONLY in0-read ablation (operation_attributes.diag_in0_read_mask; 0 => production, no define,
+    // no extra arg => byte-identical). 1 => skip redundant (ns>0) reads; 2 => skip all in0 DRAM reads. Only
+    // the single-output, no-fusion path is supported (the diagnostic appends one writer arg at index 17,
+    // which must be free). ----
+    const uint32_t diag_in0 = operation_attributes.diag_in0_read_mask;
+    if (diag_in0 != 0u) {
+        TT_FATAL(
+            !has_bias && !has_ternary && !has_activation && n_chunks == 1u,
+            "regime_a_matmul in0-read diagnostic (diag_in0_read_mask={}) is only supported unfused + single-output",
+            diag_in0);
+        wdefs[diag_in0 == 2u ? "SKIP_ALL_IN0_DRAM_READS" : "SKIP_REDUNDANT_IN0_DRAM_READS"] = "1";
+    }
+
     // ---- M-split worker PLACEMENT (Sm>1): IN1_NEAR. Overrides only P.cores[i].coord; MUST run BEFORE the ring
     // reorder so the ring order recomputes on the placed coords. No-op at Sm==1. ----
     if (Sm > 1u) {
@@ -563,6 +576,12 @@ RegimeAMatmulProgramFactory::cached_program_t RegimeAMatmulProgramFactory::creat
             for (uint32_t c = 1; c < n_chunks; ++c) {
                 wa.push_back(tensor_return_value[c].buffer()->address());
             }
+        }
+        // TEST-ONLY in0-read ablation flag (appended at index 17 for the unfused/single-output diagnostic
+        // build; absent => production arg layout unchanged). 1 => this core skips its in0 DRAM read.
+        if (diag_in0 != 0u) {
+            const uint32_t skip = (diag_in0 == 2u) ? 1u : (cp.nn > 0u ? 1u : 0u);  // 2=all, 1=redundant(ns>0)
+            wa.push_back(skip);
         }
         SetRuntimeArgs(program, wh, cores[i], wa);
 
