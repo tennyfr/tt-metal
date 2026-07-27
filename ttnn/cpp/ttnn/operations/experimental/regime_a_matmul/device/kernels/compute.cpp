@@ -491,6 +491,7 @@ void kernel_main() {
                 }
                 cb_wait_front(in1_cb, in1_block_num_tiles);
 
+#if !defined(SKIP_COMPUTE)
                 matmul_blocks(
                     in0_cb,
                     in1_cb,
@@ -502,6 +503,12 @@ void kernel_main() {
                     current_subblock_h,
                     current_subblock_w,
                     k_block * in0_block_num_tiles);  // block-major offset into the resident k-slice
+#else
+                // Diagnostic: skip the matmul MATH. in0/in1 CBs are still waited + popped (below) so the
+                // dataflow protocol is unchanged; the accumulation buffer keeps its stale/uninitialised
+                // contents and the minimal output pack (copy_block below) still produces the out_cb shape.
+                (void)k_block;
+#endif
 
                 cb_pop_front(in1_cb, in1_block_num_tiles);
                 if (k_block == 0) {
@@ -520,6 +527,11 @@ void kernel_main() {
 #ifndef REGIME_A_FUSED
             // NO-FUSION path (byte-identical to the historical Regime-A output stage): top and non-top reduce
             // bands are identical; the writer decides forward-up vs DRAM-write.
+#if defined(SKIP_REDUCTION)
+            // Diagnostic: no cross-band accumulation. Every band packs its LOCAL partial to out_cb (no
+            // cb_reduce wait/pop); the writer (also SKIP_REDUCTION) writes each local partial directly.
+            copy_block(intermediate_cb, out_cb, M_block_tiles, N_block_tiles);
+#else
             if (is_reduce_bottom) {
                 copy_block(intermediate_cb, out_cb, M_block_tiles, N_block_tiles);
             } else {
@@ -527,6 +539,7 @@ void kernel_main() {
                 reduce_add_block(intermediate_cb, cb_reduce, out_cb, M_block_tiles, N_block_tiles);
                 cb_pop_front(cb_reduce, out_block_num_tiles);
             }
+#endif
             cb_pop_front(intermediate_cb, out_block_num_tiles);
 #else
             // FUSION-AWARE split-K: bias/activation/addcmul are applied EXACTLY ONCE at the reduction ROOT

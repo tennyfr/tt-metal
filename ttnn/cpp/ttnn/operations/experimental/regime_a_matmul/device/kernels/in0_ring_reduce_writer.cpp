@@ -208,11 +208,11 @@ void kernel_main() {
     };
 #endif
 
-    // ---- TEST-ONLY in0-read ablation flag. Appended at index 17 by the factory ONLY for the unfused/
-    // single-output diagnostic build (mask != 0); never present in production, so this read + the guard
+    // ---- TEST-ONLY in0-read-skip flag. Appended at index 17 by the factory ONLY for the unfused/
+    // single-output diagnostic build (bit0/bit1 set); never present in production, so this read + the guard
     // below compile to nothing in the mask-0 binary. 1 => skip this core's in0 DRAM read (leave stale L1,
     // preserve CB reserve/push/pop, pointer advance, barrier, ring forwarding, semaphores, compute). ----
-#if defined(SKIP_ALL_IN0_DRAM_READS) || defined(SKIP_REDUNDANT_IN0_DRAM_READS)
+#if defined(SKIP_ALL_IN0_READ) || defined(SKIP_REDUNDANT_IN0_READ)
     const uint32_t in0_skip = get_arg_val<uint32_t>(17);
 #endif
 
@@ -230,7 +230,7 @@ void kernel_main() {
                     for (uint32_t k = 0; k < K_block; ++k) {
                         const uint32_t l = sb * K_block + k;  // capacity-local K index within the slice
                         if (m < valid_m && l < valid_k) {
-#if defined(SKIP_ALL_IN0_DRAM_READS) || defined(SKIP_REDUNDANT_IN0_DRAM_READS)
+#if defined(SKIP_ALL_IN0_READ) || defined(SKIP_REDUNDANT_IN0_READ)
                             // Diagnostic: skip ONLY the DRAM read; leave the L1 slot's stale contents and
                             // keep the pointer advance / loop / barrier / push / ring forwarding intact so
                             // downstream work is measured unchanged (output is intentionally invalid).
@@ -253,8 +253,12 @@ void kernel_main() {
         }
         if (step + 1 < G) {  // forward this slot to the next core's slot (step+1) + signal
             uint64_t dst = get_noc_addr(fwd_next_x, fwd_next_y, base0 + (step + 1) * shard_bytes);
+#if !defined(SKIP_IN0_RING_FORWARD)
             noc_async_write(slot, dst, shard_bytes);
-            noc_semaphore_inc(get_noc_addr(fwd_next_x, fwd_next_y, fwd_addr), 1);
+#else
+            (void)dst;  // diagnostic: drop the ring PAYLOAD write; keep the readiness/credit semaphore below
+#endif
+            noc_semaphore_inc(get_noc_addr(fwd_next_x, fwd_next_y, fwd_addr), 1);  // credit preserved (stale L1)
         }
         cb_push_back(in0_cb, W * in0_blk);  // compute consumes this shard (W blocks)
     }
@@ -275,7 +279,9 @@ void kernel_main() {
             for (uint32_t m = 0; m < M_block; ++m) {
                 for (uint32_t n = 0; n < N_block; ++n) {
                     if (m < valid_m && (nb * N_block + n) < valid_n) {  // write only valid_m x valid_n
-#if defined(OUT_CHUNKS)
+#if defined(SKIP_OUTPUT_WRITE)
+                        // diagnostic: drop the DRAM payload write; keep the iteration + CB consumption below.
+#elif defined(OUT_CHUNKS)
                         write_out_tile(m_start + m, n_off + n, r + (m * N_block + n) * tile_bytes);
 #else
                         noc_async_write_page((m_start + m) * Nt + (n_off + n), out, r + (m * N_block + n) * tile_bytes);
@@ -302,6 +308,29 @@ void kernel_main() {
     const uint64_t next_recv = get_noc_addr(red_next_x, red_next_y, red_addr);
 
     for (uint32_t nb = 0; nb < N_bpc; ++nb) {
+#if defined(SKIP_REDUCTION)
+        // Diagnostic: remove the split-K chain (non-root sends, root receives/accumulation). compute copied
+        // this band's LOCAL partial into out_cb; every band writes it to DRAM directly (unless output skipped).
+        (void)reduce_base;
+        (void)red_ptr;
+        (void)redfree_ptr;
+        (void)prev_redfree;
+        (void)next_recv;
+        cb_wait_front(out_cb, out_blk);
+        uint32_t r = get_read_ptr(out_cb);
+        const uint32_t n_off = n_start + nb * N_block;
+        for (uint32_t m = 0; m < M_block; ++m) {
+            for (uint32_t n = 0; n < N_block; ++n) {
+                if (m < valid_m && (nb * N_block + n) < valid_n) {
+#if !defined(SKIP_OUTPUT_WRITE)
+                    noc_async_write_page((m_start + m) * Nt + (n_off + n), out, r + (m * N_block + n) * tile_bytes);
+#endif
+                }
+            }
+        }
+        noc_async_writes_flushed();
+        cb_pop_front(out_cb, out_blk);
+#else
         if (!is_bottom) {
             cb_reserve_back(cb_reduce, out_blk);  // wait our compute freed slot (nb-2)
             noc_semaphore_inc(prev_redfree, 1);   // tell prev: our slot (nb%2) is free for block nb
@@ -330,7 +359,9 @@ void kernel_main() {
             for (uint32_t m = 0; m < M_block; ++m) {
                 for (uint32_t n = 0; n < N_block; ++n) {
                     if (m < valid_m && (nb * N_block + n) < valid_n) {  // write only valid_m x valid_n
-#if defined(OUT_CHUNKS)
+#if defined(SKIP_OUTPUT_WRITE)
+                        // diagnostic: drop the DRAM payload write; keep iteration + CB consumption.
+#elif defined(OUT_CHUNKS)
                         write_out_tile(m_start + m, n_off + n, r + (m * N_block + n) * tile_bytes);
 #else
                         noc_async_write_page((m_start + m) * Nt + (n_off + n), out, r + (m * N_block + n) * tile_bytes);
@@ -341,6 +372,7 @@ void kernel_main() {
             noc_async_writes_flushed();  // output pages departed L1 -> out_cb slot safe to reuse
         }
         cb_pop_front(out_cb, out_blk);
+#endif  // SKIP_REDUCTION
     }
     // Pipelined: single deferred completion before return — drain this core's forwarded partial-sums / DRAM
     // output writes AND the non-posted reduction-readiness semaphore atomics (noc_semaphore_inc), so no
