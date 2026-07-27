@@ -128,7 +128,14 @@ def run_suites(suites: list[str]) -> None:
         # via the list form (no shell), so no argument can be shell-interpreted or injected.
         gtest_filter = _validate_gtest_id(f"{SUITES[suite]['gtest_suite']}/*")
         print(f"Running {gtest_filter}")
-        subprocess.run([str(binary), f"--gtest_filter={gtest_filter}"], cwd=_REPO_ROOT, env=env)
+        result = subprocess.run([str(binary), f"--gtest_filter={gtest_filter}"], cwd=_REPO_ROOT, env=env)
+        # Fail loudly on a crashing/failing gtest instead of silently post-processing
+        # whatever (stale/partial) profiler dirs happen to be on disk.
+        if result.returncode != 0:
+            raise SystemExit(
+                f"ERROR: benchmark suite '{suite}' ({gtest_filter}) exited with code "
+                f"{result.returncode}; aborting before post-processing."
+            )
 
 
 # --------------------------------------------------------------------------- #
@@ -243,15 +250,17 @@ def gate_against_golden(metrics: dict, golden_path: Path, gate_metrics, toleranc
     for key in keys:
         golden_value = golden_block.get(key)
         measured = metrics.get(key)
+        # A missing/NaN measurement is always a failure — even in record mode — so a
+        # parser regression or absent CSV can never leave this job green with no data.
+        if measured is None or measured != measured:  # None or NaN
+            print(f"gate: FAIL — measured {key} is missing/NaN (no samples extracted)", file=sys.stderr)
+            failed = True
+            continue
         if golden_value is None:
             print(
                 f"[record mode] golden '{key}' not populated in {golden_path.name}; "
                 f"measured={_fmt(measured)} cycles. Populate it to enable this gate. Passing."
             )
-            continue
-        if measured is None or measured != measured:  # None or NaN
-            print(f"gate: FAIL — measured {key} is missing/NaN (no samples extracted)", file=sys.stderr)
-            failed = True
             continue
         lo = golden_value * (1.0 - tol / 100.0)
         hi = golden_value * (1.0 + tol / 100.0)
