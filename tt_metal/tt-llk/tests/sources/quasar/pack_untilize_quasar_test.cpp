@@ -188,12 +188,11 @@ void run_kernel(RUNTIME_PARAMETERS params)
     _llk_pack_hw_configure_<p_pacr::PACK0, is_fp32_dest_acc_en>(tdma_desc, ckernel::ReluConfig::none());
 
     // _llk_pack_untilize_ packs one block ct_dim of tiles (one tile row) at a time
-    std::uint32_t y_stride_external;
+    std::uint32_t y_stride_external = FULL_CT_DIM * tensor_shape.num_faces_r_dim * tensor_shape.face_r_dim;
 
     if (tensor_shape.total_num_faces() == NUM_FACES)
     {
         _llk_pack_untilize_init_<FULL_CT_DIM, BLOCK_CT_DIM>(buf_desc_id, tensor_shape);
-        y_stride_external = FULL_CT_DIM * tensor_shape.num_faces_r_dim * tensor_shape.face_r_dim;
     }
     else
     {
@@ -212,7 +211,7 @@ void run_kernel(RUNTIME_PARAMETERS params)
         }
         else
         {
-            _llk_pack_untilize_strided_<FULL_CT_DIM>(buf_desc_id, tensor_shape, y * FULL_CT_DIM, 0);
+            _llk_pack_untilize_strided_<FULL_CT_DIM>(buf_desc_id, tensor_shape, y * y_stride_external, 0);
             _llk_pack_dest_dvalid_section_done_<dest_sync, is_fp32_dest_acc_en>();
         }
     }
