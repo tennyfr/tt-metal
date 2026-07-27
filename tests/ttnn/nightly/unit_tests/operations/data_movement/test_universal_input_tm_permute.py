@@ -907,3 +907,70 @@ def test_permute_dram_sharded_fallback(device):
     ref = x.permute(0, 1, 3, 2)
     got = ttnn.to_torch(result.cpu().to(ttnn.ROW_MAJOR_LAYOUT))
     assert_with_ulp(ref, got, ulp_threshold=0)
+
+
+# Regression #50684: specless sharded output must shrink CoreRangeSet to populated shard count.
+
+
+def _permute_and_assert_shrink(device, shape, dims, out_layout, expected_grid_factory, n_expected):
+    compute_grid = device.compute_with_storage_grid_size()
+    if compute_grid.x * compute_grid.y < n_expected:
+        pytest.skip(f"Device grid too small for shrink test (need >= {n_expected} cores)")
+    torch.manual_seed(12345)
+    x = torch.rand(shape, dtype=torch.bfloat16)
+    ttnn_in = ttnn.from_torch(
+        x, layout=ttnn.TILE_LAYOUT, dtype=ttnn.bfloat16, device=device, memory_config=L1_INTERLEAVED
+    )
+    out_mc = ttnn.MemoryConfig(out_layout, ttnn.BufferType.L1)
+    result = ttnn.permute(ttnn_in, dims, memory_config=out_mc)
+    grid = result.memory_config().shard_spec.grid
+    assert grid.num_cores() == n_expected, f"Expected {n_expected} populated cores, got {grid.num_cores()}"
+    expected = expected_grid_factory(compute_grid)
+    assert grid == expected, f"Expected grid {expected}, got {grid}"
+    ref = x.permute(dims)
+    got = ttnn.to_torch(result.cpu().to(ttnn.ROW_MAJOR_LAYOUT))
+    assert_with_ulp(ref, got, ulp_threshold=0)
+
+
+def test_permute_specless_sharded_output_grid_shrinks_height(device):
+    """HEIGHT_SHARDED no-spec output: expect ceil(tensor_h / shard_h) populated cores.
+    permute (2,2,32,64) (0,1,3,2) → out=(2,2,64,32); tensor_h=256, shard_h=32 → 8 populated cores."""
+    _permute_and_assert_shrink(
+        device,
+        shape=(2, 2, 32, 64),
+        dims=(0, 1, 3, 2),
+        out_layout=ttnn.TensorMemoryLayout.HEIGHT_SHARDED,
+        expected_grid_factory=lambda grid: ttnn.num_cores_to_corerangeset(8, grid, True),
+        n_expected=8,
+    )
+
+
+def test_permute_specless_sharded_output_grid_shrinks_width(device):
+    """WIDTH_SHARDED no-spec output: expect ceil(tensor_w / shard_w) populated cores.
+    permute (2,2,64,32) (0,1,3,2) → out=(2,2,32,64); tensor_w=64, shard_w=32 → 2 populated cores."""
+    _permute_and_assert_shrink(
+        device,
+        shape=(2, 2, 64, 32),
+        dims=(0, 1, 3, 2),
+        out_layout=ttnn.TensorMemoryLayout.WIDTH_SHARDED,
+        expected_grid_factory=lambda grid: ttnn.num_cores_to_corerangeset(2, grid, True),
+        n_expected=2,
+    )
+
+
+def test_permute_specless_sharded_output_grid_shrinks_block(device):
+    """BLOCK_SHARDED no-spec output: expect rectangular 2x2 populated grid.
+    permute (1,1,64,64) (0,1,3,2) → out=(1,1,64,64); shard=32x32 → 2x2 rectangle = 4 cores."""
+    compute_grid = device.compute_with_storage_grid_size()
+    if compute_grid.x < 2 or compute_grid.y < 2:
+        pytest.skip("Device grid too small for 2x2 BLOCK shrink test")
+    _permute_and_assert_shrink(
+        device,
+        shape=(1, 1, 64, 64),
+        dims=(0, 1, 3, 2),
+        out_layout=ttnn.TensorMemoryLayout.BLOCK_SHARDED,
+        expected_grid_factory=lambda _grid: ttnn.CoreRangeSet(
+            {ttnn.CoreRange(ttnn.CoreCoord(0, 0), ttnn.CoreCoord(1, 1))}
+        ),
+        n_expected=4,
+    )
