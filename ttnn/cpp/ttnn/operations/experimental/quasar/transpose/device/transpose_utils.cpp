@@ -3,9 +3,12 @@
 
 #include "transpose_utils.hpp"
 
+#include <algorithm>
+
 #include <tt-logger/tt-logger.hpp>
 #include <tt-metalium/constants.hpp>
 #include <tt-metalium/host_api.hpp>
+#include <tt-metalium/work_split.hpp>
 
 namespace ttnn::operations::experimental::quasar::transpose_op {
 
@@ -129,10 +132,12 @@ std::optional<ShardSpec> adjust_shard_spec_to_shape(
     return ret;
 }
 
-// Build a sharded spec over the full compute grid (used when no input shard_spec is available
-// to scale from, e.g. interleaved input + sharded output request).
+// #50684: size CoreRangeSet to populated shards (avoids L1 waste + misleading .grid.num_cores()).
 ShardSpec generate_transpose_shard_spec(
-    const Tensor& input_tensor, const ttnn::Shape& padded_out_shape, TensorMemoryLayout memory_layout) {
+    const Tensor& input_tensor,
+    const ttnn::Shape& padded_out_shape,
+    TensorMemoryLayout memory_layout,
+    std::optional<ShardOrientation> orientation_hint) {
     auto* device = input_tensor.device();
     auto compute_grid_size = device->compute_with_storage_grid_size();
     CoreRangeSet all_cores(CoreRange({0, 0}, {compute_grid_size.x - 1, compute_grid_size.y - 1}));
@@ -166,8 +171,52 @@ ShardSpec generate_transpose_shard_spec(
             tt::round_up(tt::div_up(tensor_width, static_cast<uint64_t>(grid_size.x)), tt::constants::TILE_WIDTH);
         shard_shape = {static_cast<uint32_t>(shard_height), static_cast<uint32_t>(shard_width)};
     }
-    log_debug(tt::LogOp, "Transpose: generated shard spec over full compute grid ({} cores)", num_cores);
-    return ShardSpec(all_cores, shard_shape, ShardOrientation::ROW_MAJOR);
+
+    // Resolve orientation (hint > input > ROW_MAJOR) before core-fill (matches DM twin post-#48025).
+    ShardOrientation orientation = ShardOrientation::ROW_MAJOR;
+    if (orientation_hint.has_value()) {
+        orientation = *orientation_hint;
+    } else if (input_tensor.shard_spec().has_value()) {
+        orientation = input_tensor.shard_spec()->orientation;
+    }
+    const bool row_wise = (orientation == ShardOrientation::ROW_MAJOR);
+
+    // Populated-shard count → CoreRangeSet; BLOCK stays rectangular for downstream BLOCK factories.
+    CoreRangeSet used_cores;
+    if (memory_layout == TensorMemoryLayout::HEIGHT_SHARDED) {
+        uint32_t n_used = static_cast<uint32_t>(tt::div_up(tensor_height, static_cast<uint64_t>(shard_shape[0])));
+        n_used = std::min(std::max(n_used, 1u), num_cores);
+        used_cores = (n_used == num_cores)
+                         ? all_cores
+                         : tt::tt_metal::num_cores_to_corerangeset(n_used, compute_grid_size, row_wise);
+    } else if (memory_layout == TensorMemoryLayout::WIDTH_SHARDED) {
+        uint32_t n_used = static_cast<uint32_t>(tt::div_up(tensor_width, static_cast<uint64_t>(shard_shape[1])));
+        n_used = std::min(std::max(n_used, 1u), num_cores);
+        used_cores = (n_used == num_cores)
+                         ? all_cores
+                         : tt::tt_metal::num_cores_to_corerangeset(n_used, compute_grid_size, row_wise);
+    } else {
+        // BLOCK: ROW_MAJOR → (nx=w, ny=h); COL_MAJOR swaps (mirrors reshape_view + native factories).
+        uint32_t n_h = static_cast<uint32_t>(tt::div_up(tensor_height, static_cast<uint64_t>(shard_shape[0])));
+        uint32_t n_w = static_cast<uint32_t>(tt::div_up(tensor_width, static_cast<uint64_t>(shard_shape[1])));
+        uint32_t max_x =
+            row_wise ? static_cast<uint32_t>(compute_grid_size.x) : static_cast<uint32_t>(compute_grid_size.y);
+        uint32_t max_y =
+            row_wise ? static_cast<uint32_t>(compute_grid_size.y) : static_cast<uint32_t>(compute_grid_size.x);
+        uint32_t nx = std::min(std::max(row_wise ? n_w : n_h, 1u), max_x);
+        uint32_t ny = std::min(std::max(row_wise ? n_h : n_w, 1u), max_y);
+        used_cores =
+            (nx == static_cast<uint32_t>(compute_grid_size.x) && ny == static_cast<uint32_t>(compute_grid_size.y))
+                ? all_cores
+                : CoreRangeSet(CoreRange({0, 0}, {nx - 1, ny - 1}));
+    }
+    log_debug(
+        tt::LogOp,
+        "Transpose: generated shard spec ({}, {}) over {} populated cores",
+        shard_shape[0],
+        shard_shape[1],
+        used_cores.num_cores());
+    return ShardSpec(used_cores, shard_shape, orientation);
 }
 
 }  // namespace ttnn::operations::experimental::quasar::transpose_op
