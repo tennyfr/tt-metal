@@ -214,6 +214,16 @@ void kernel_main() {
     // preserve CB reserve/push/pop, pointer advance, barrier, ring forwarding, semaphores, compute). ----
 #if defined(SKIP_ALL_IN0_READ) || defined(SKIP_REDUNDANT_IN0_READ)
     const uint32_t in0_skip = get_arg_val<uint32_t>(17);
+#define DIAG_ARG_BASE 18
+#else
+#define DIAG_ARG_BASE 17
+#endif
+    // ---- TEST-ONLY ring-forward PERTURBATION args (bit6 FWD_NEAR): nearest program core on this core's
+    // writer NoC. Payload only; the readiness semaphore below still targets the TRUE ring successor, so the
+    // ring's step count / dependency chain is unchanged and only hop distance is removed. ----
+#if defined(FWD_NEAR)
+    const uint32_t near_x = get_arg_val<uint32_t>(DIAG_ARG_BASE);
+    const uint32_t near_y = get_arg_val<uint32_t>(DIAG_ARG_BASE + 1);
 #endif
 
     // ---- PHASE 1: in0 ring all-gather (balanced tails: read only valid M rows / valid K, else zero) ----
@@ -254,7 +264,17 @@ void kernel_main() {
         if (step + 1 < G) {  // forward this slot to the next core's slot (step+1) + signal
             uint64_t dst = get_noc_addr(fwd_next_x, fwd_next_y, base0 + (step + 1) * shard_bytes);
 #if !defined(SKIP_IN0_RING_FORWARD)
+#if defined(FWD_NEAR)
+            // diagnostic: same bytes, ~1 hop. Destination is the SAME cb0 offset on a near core (identical CB
+            // layout on every core, so the address is in-bounds); its slot is also written by its true
+            // predecessor -> content is garbage, which is expected for a diagnostic mask.
+            dst = get_noc_addr(near_x, near_y, base0 + (step + 1) * shard_bytes);
+#endif
+#if defined(FWD_HALF)
+            noc_async_write(slot, dst, shard_bytes / 2u);  // diagnostic: half the payload, true destination
+#else
             noc_async_write(slot, dst, shard_bytes);
+#endif
 #else
             (void)dst;  // diagnostic: drop the ring PAYLOAD write; keep the readiness/credit semaphore below
 #endif

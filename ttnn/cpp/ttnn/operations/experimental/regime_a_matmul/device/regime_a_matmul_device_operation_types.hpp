@@ -34,6 +34,19 @@ struct RegimeAMatmulParams {
     //   bit3 (8)  SKIP_COMPUTE             - skip the matmul math; keep CB plumbing + minimal output pack
     //   bit4 (16) SKIP_REDUCTION           - skip split-K chain sends/receives + accumulation (write local partial)
     //   bit5 (32) SKIP_OUTPUT_WRITE        - skip output DRAM payload writes; keep iteration + CB consumption
+    // Two further bits PERTURB (rather than skip) the ring forward, to attribute its cost between hop
+    // distance/link contention and per-core injection/L1-source bandwidth. Both keep the readiness semaphore
+    // to the TRUE ring neighbour, so the dependency chain and step count are byte-for-byte the baseline's:
+    //   bit6 (64)  FWD_NEAR               - same bytes, but the payload goes to the NEAREST program core on
+    //                                       this core's writer NoC instead of the ring successor (~1 hop)
+    //   bit7 (128) FWD_HALF               - true destination, half the payload bytes (byte-linearity probe)
+    // Bit8 is different in kind: a HOST-ONLY, correctness-preserving alternative in0 ring topology (no
+    // kernel define, no extra arg, output still valid), so it is allowed on every path including fusion:
+    //   bit8 (256) RING_REGIONAL          - partition the 8*Ns cores of each (kk,mm) group into Ns
+    //                                       physically compact rings instead of "the 8 banks of one slice"
+    //                                       (MEASURED REFUTED: -4..-9%; compactness raises peak link load)
+    //   bit9 (512) RING_BALANCED          - production ring membership, but order each ring to minimise the
+    //                                       peak GLOBAL NoC link load instead of that ring's own hop cost
     // Bits combine freely (pair-interaction matrix). bit0 dominates bit1 (normalize skip-all+redundant to
     // skip-all). Set from TT_REGIME_A_DIAG_MASK in invoke(); part of the reflection program-cache hash so
     // each mask is a distinct cached program. Diagnostic outputs are intentionally invalid; correctness is
