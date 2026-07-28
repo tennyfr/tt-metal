@@ -870,7 +870,13 @@ std::vector<CoreCoord> Device::get_optimal_dram_bank_to_logical_worker_assignmen
     // This function queries Physical Coordinates (only exposed directly to the Device class)
     // and passes them to logic in core_assignment.cpp to derive the most optimal core placement
     // based on architecture specific logic and Physical Grid configuration.
-    if (this->optimal_dram_bank_to_logical_worker_assignment_.empty()) {
+    // The result DEPENDS ON THE NOC: dram_core_from_dram_channel(i, noc) resolves to a different subchannel
+    // endpoint per NoC (SOC descriptor `dram_views.worker_endpoint`), so the cache must be keyed by NoC.
+    // Previously it was a single unkeyed vector, so the second call with a different NoC returned the first
+    // NoC's assignment.
+    const size_t noc_idx = (noc == NOC::NOC_1) ? 1u : 0u;
+    auto& cached_assignment = this->optimal_dram_bank_to_logical_worker_assignment_[noc_idx];
+    if (cached_assignment.empty()) {
         uint32_t full_grid_size_x = this->grid_size().x;
         uint32_t full_grid_size_y = this->grid_size().y;
 
@@ -929,8 +935,7 @@ std::vector<CoreCoord> Device::get_optimal_dram_bank_to_logical_worker_assignmen
         for (auto physical_worker_core : physical_worker_cores) {
             tt::umd::CoreCoord logical_coord_translated =
                 soc_desc.translate_coord_to(physical_worker_core, CoordSystem::NOC0, CoordSystem::LOGICAL);
-            this->optimal_dram_bank_to_logical_worker_assignment_.push_back(
-                CoreCoord(logical_coord_translated.x, logical_coord_translated.y));
+            cached_assignment.push_back(CoreCoord(logical_coord_translated.x, logical_coord_translated.y));
             TT_ASSERT(
                 logical_coord_translated.core_type == CoreType::TENSIX,
                 "Worker dram interface core {} should be a Tensix core, algorithm to place DRAM interfacing workers is "
@@ -938,7 +943,7 @@ std::vector<CoreCoord> Device::get_optimal_dram_bank_to_logical_worker_assignmen
                 logical_coord_translated.str());
         }
     }
-    return this->optimal_dram_bank_to_logical_worker_assignment_;
+    return cached_assignment;
 }
 
 HalProgrammableCoreType Device::get_programmable_core_type(CoreCoord virtual_core) const {
