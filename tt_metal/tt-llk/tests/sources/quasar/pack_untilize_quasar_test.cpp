@@ -342,7 +342,7 @@ void run_kernel(RUNTIME_PARAMETERS params)
                     }
                     else
                     {
-                        _llk_pack_untilize_strided_<FULL_CT_DIM>(buf_desc_id, tensor_shape, y * FULL_CT_DIM, 0);
+                        _llk_pack_untilize_strided_<FULL_CT_DIM>(buf_desc_id, tensor_shape, y * y_stride_external, 0);
                     }
                 }
             }
@@ -359,7 +359,7 @@ void run_kernel(RUNTIME_PARAMETERS params)
                     }
                     else
                     {
-                        _llk_pack_untilize_strided_<FULL_CT_DIM>(buf_desc_id, tensor_shape, y * FULL_CT_DIM, 0);
+                        _llk_pack_untilize_strided_<FULL_CT_DIM>(buf_desc_id, tensor_shape, y * y_stride_external, 0);
                     }
                     _llk_pack_dest_dvalid_section_done_<dest_sync, is_fp32_dest_acc_en>();
                 }
