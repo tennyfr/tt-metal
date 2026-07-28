@@ -116,7 +116,7 @@ jobs:
       has-t2-sweep: ${{ steps.check.outputs.has-t2-sweep }}
       has-t3-unit: ${{ steps.check.outputs.has-t3-unit }}
       has-t3-e2e: ${{ steps.check.outputs.has-t3-e2e }}
-      has-vllm: ${{ steps.check.outputs.has-vllm }}
+      has-vllm-tests: ${{ steps.check.outputs.has-vllm-tests }}
       has-any-tests: ${{ steps.check.outputs.has-any-tests }}
     steps:
       - name: Checkout test definitions
@@ -294,7 +294,7 @@ jobs:
                   if any(s in enabled_skus for s in skus) and model_matches(test.get("model", ""), model_filter):
                       has_vllm = True
                       break
-          results["has-vllm"] = "true" if has_vllm else "false"
+          results["has-vllm-tests"] = "true" if has_vllm else "false"
           if has_vllm and run_vllm:
               any_tests = True
 
@@ -464,10 +464,10 @@ jobs:
 
   # Note: Tier 3 sweep tests not yet defined — no sweep entries with tier 3 exist in models_sweep_tests.yaml
 
-  # ── vLLM (single pipeline, not tier-gated) ─────────────────────────
+  # ── vLLM (single pipeline; runs the whole curated set, tier filter optional) ──
   vllm-tests:
     needs: [build-artifact, preflight]
-    if: ${{ inputs.run-vllm-tests && needs.preflight.outputs.has-vllm == 'true' }}
+    if: ${{ inputs.run-vllm-tests && needs.preflight.outputs.has-vllm-tests == 'true' }}
     secrets: inherit
     uses: ./.github/workflows/vllm-model-tests-impl.yaml
     with:
@@ -477,7 +477,14 @@ jobs:
       enabled-skus: ${{ needs.preflight.outputs.enabled-skus }}
       model: ${{ inputs.model || 'all' }}
       mlperf-read-only: ${{ inputs.mlperf-read-only != false }}
-      tier: "all"
+      # Pass the tier filter through only when exactly one tier checkbox is
+      # selected; any other combination (multiple, or the default all-on) runs
+      # the full curated set (tier=all).
+      tier: >-
+        ${{ (inputs.tier-1 && !inputs.tier-2 && !inputs.tier-3) && '1'
+         || (!inputs.tier-1 && inputs.tier-2 && !inputs.tier-3) && '2'
+         || (!inputs.tier-1 && !inputs.tier-2 && inputs.tier-3) && '3'
+         || 'all' }}
 
   # ── AI run summary ────────────────────────────────────────────────
   # Aggregates per-leg ai-job-summary artifacts into one run-level report.

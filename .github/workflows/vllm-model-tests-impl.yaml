@@ -31,7 +31,7 @@ on:
         type: boolean
         default: true
       tier:
-        description: "Tier to filter tests by ('all' runs every tier). Classification only — every entry runs at the same cadence."
+        description: "Filter tests to this tier on manual runs ('all' = no filter; scheduled runs pass 'all'). The per-entry tier mirrors the model's e2e/unit tier."
         required: false
         type: string
         default: "all"
