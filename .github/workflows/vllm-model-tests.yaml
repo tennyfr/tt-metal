@@ -80,7 +80,7 @@ on:
 
 permissions:
   packages: write
-  contents: write
+  contents: read
 
 run-name: "vLLM Model Tests ${{ github.event_name == 'schedule' && '[scheduled]' || format('[{0}] [{1}] [{2}]', (inputs.model == 'all' && 'All models' || inputs.model), (inputs.sku == 'all' && 'All SKUs' || inputs.sku), (inputs.tier == 'all' && 'All tiers' || format('Tier {0}', inputs.tier))) }}"
 
