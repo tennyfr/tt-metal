@@ -320,7 +320,7 @@ void init_binary_sfpu_operation_quasar()
  * @param math_format Dest math format (Int32 vs float path for MUL and max/min).
  * @note Must be preceded by @ref init_binary_sfpu_operation_quasar for the same op.
  */
-template <ckernel::BinaryOp OP, DstSync DST_SYNC, bool is_fp32_dest_acc_en, int ITERATIONS = SFPU_ITERATIONS>
+template <ckernel::BinaryOp OP, DstSync DST_SYNC, bool is_fp32_dest_acc_en, bool ROUND_NEAREST = false, int ITERATIONS = SFPU_ITERATIONS>
 void call_binary_sfpu_operation_quasar(std::uint32_t src0_tile, std::uint32_t src1_tile, std::uint32_t dst_tile, [[maybe_unused]] DataFormat math_format)
 {
     if constexpr (OP == BinaryOp::ADD)
@@ -336,7 +336,7 @@ void call_binary_sfpu_operation_quasar(std::uint32_t src0_tile, std::uint32_t sr
                 DST_SYNC,
                 is_fp32_dest_acc_en,
                 calculate_sfpu_binary,
-                (false /*APPROX*/, BinaryOp::ADD, is_fp32_dest_acc_en, ITERATIONS),
+                (false /*APPROX*/, BinaryOp::ADD, is_fp32_dest_acc_en, ROUND_NEAREST, ITERATIONS),
                 src0_tile,
                 src1_tile,
                 dst_tile,
@@ -350,7 +350,7 @@ void call_binary_sfpu_operation_quasar(std::uint32_t src0_tile, std::uint32_t sr
             DST_SYNC,
             is_fp32_dest_acc_en,
             calculate_sfpu_binary,
-            (false /*APPROX*/, BinaryOp::SUB, is_fp32_dest_acc_en, ITERATIONS),
+            (false /*APPROX*/, BinaryOp::SUB, is_fp32_dest_acc_en, ROUND_NEAREST, ITERATIONS),
             src0_tile,
             src1_tile,
             dst_tile,
