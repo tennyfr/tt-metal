@@ -30,7 +30,14 @@ constexpr uint32_t FABRIC_DBG_HS_RX_VALUE_TAG = 0x5E5EBB00;
  * recovery during fabric init/teardown.
  */
 
-template <bool RISC_CPU_DATA_CACHE_ENABLED>
+// SKIP_CONTEXT_SWITCH (compile-time): when true, the spin never calls run_routing(). run_routing() does a
+// FULL risc_context_switch() (ncrisc_noc_full_sync + aerisc_context_switch + ncrisc_noc_counters_init) which
+// is safe at INIT (NOC not yet router-owned) but NOT at runtime: the fabric router runs in dedicated-NOC mode
+// with private shadow counters, and the full switch would re-init the NOC0 counters underneath it, desyncing
+// them and hanging the router on resume. The POST-RETRAIN handshake runs inside the coordinated context
+// switch already, so it sets this true and simply keeps hammering the peer (the termination-signal check in
+// the loop condition still lets it bail). Default false preserves the init behavior.
+template <bool RISC_CPU_DATA_CACHE_ENABLED, bool SKIP_CONTEXT_SWITCH = false>
 FORCE_INLINE void fabric_sender_side_handshake(
     uint32_t handshake_register_address,
     uint16_t my_mesh_id,
@@ -47,7 +54,11 @@ FORCE_INLINE void fabric_sender_side_handshake(
            && !tt::tt_fabric::got_immediate_termination_signal<RISC_CPU_DATA_CACHE_ENABLED>(termination_signal_ptr)
 #endif
     ) {
-        if (count == HS_CONTEXT_SWITCH_TIMEOUT) {
+        if constexpr (SKIP_CONTEXT_SWITCH) {
+            // [POST-RETRAIN] No run_routing()/full context switch (would desync the router's dedicated-NOC
+            // shadow counters). Just keep hammering the peer with our scratch value.
+            internal_::eth_send_packet(0, scratch_addr, local_val_addr, 1);
+        } else if (count == HS_CONTEXT_SWITCH_TIMEOUT) {
             count = 0;
 
 #if (defined(COMPILE_FOR_AERISC) && (PHYSICAL_AERISC_ID == 0)) || !defined(ARCH_BLACKHOLE)
@@ -61,7 +72,10 @@ FORCE_INLINE void fabric_sender_side_handshake(
     }
 }
 
-template <bool RISC_CPU_DATA_CACHE_ENABLED>
+// SKIP_CONTEXT_SWITCH: see fabric_sender_side_handshake above. True for the post-retrain handshake so the
+// receiver-side spin never takes the full run_routing() context switch that would desync the router's
+// dedicated-NOC shadow counters. Default false preserves init behavior.
+template <bool RISC_CPU_DATA_CACHE_ENABLED, bool SKIP_CONTEXT_SWITCH = false>
 FORCE_INLINE void fabric_receiver_side_handshake(
     uint32_t handshake_register_address,
     uint16_t my_mesh_id,
@@ -90,7 +104,10 @@ FORCE_INLINE void fabric_receiver_side_handshake(
             WATCHER_RING_BUFFER_PUSH(FABRIC_DBG_HS_RX_VALUE_TAG | (handshake_info->local_value & 0xFF));
         }
 #endif
-        if (count == HS_CONTEXT_SWITCH_TIMEOUT) {
+        if constexpr (SKIP_CONTEXT_SWITCH) {
+            // [POST-RETRAIN] No run_routing()/full context switch; just spin-poll local_value for the peer's
+            // MAGIC (the RX-VALUE probe above still fires). Bails via the termination check in the loop cond.
+        } else if (count == HS_CONTEXT_SWITCH_TIMEOUT) {
             count = 0;
 
 #if (defined(COMPILE_FOR_AERISC) && (PHYSICAL_AERISC_ID == 0)) || !defined(ARCH_BLACKHOLE)
@@ -101,13 +118,21 @@ FORCE_INLINE void fabric_receiver_side_handshake(
         }
         invalidate_l1_cache();
     }
+    // Subordinate reply -- SINGLE one-shot (256x retransmit reverted). The 256x bounded retransmit correlated
+    // with MORE hard-frozen links (4->12), suspected to wedge the subordinate in its own reply loop: each
+    // eth_send_packet busy-waits on TXQ0 drain, so a link flap mid-loop stalls the subordinate. Back to a
+    // single reply to isolate that. (Trade-off: an isolated dropped reply can again deadlock the master --
+    // that was the original 2/32 wedge; if it recurs we revisit with the mutual-completion detector instead.)
+    constexpr uint32_t HANDSHAKE_REPLY_RESENDS = 1u;
+    for (uint32_t r = 0; r < HANDSHAKE_REPLY_RESENDS; r++) {
 #ifndef ARCH_WORMHOLE
-    if (!tt::tt_fabric::got_immediate_termination_signal<RISC_CPU_DATA_CACHE_ENABLED>(termination_signal_ptr)) {
-        internal_::eth_send_packet(0, scratch_addr, local_val_addr, 1);
-    }
-#else
-    internal_::eth_send_packet(0, scratch_addr, local_val_addr, 1);
+        if (tt::tt_fabric::got_immediate_termination_signal<RISC_CPU_DATA_CACHE_ENABLED>(termination_signal_ptr)) {
+            break;
+        }
 #endif
+        internal_::eth_send_packet(0, scratch_addr, local_val_addr, 1);
+        invalidate_l1_cache();
+    }
 }
 
 }  // namespace handshake

@@ -1466,21 +1466,26 @@ FORCE_INLINE void run_post_retrain_handshake(
         // the sender (master) or receiver (subordinate), so we can classify links straight from the log.
         if constexpr (is_handshake_sender) {
             fabric_dbg_ringbuf_push_marker(FABRIC_DBG_HANDSHAKE_SENDER_ENTER);
-            erisc::datamover::handshake::fabric_sender_side_handshake<ENABLE_RISC_CPU_DATA_CACHE>(
-                handshake_addr,
-                routing_table_l1->my_mesh_id,
-                routing_table_l1->my_device_id,
-                termination_signal_ptr,
-                DEFAULT_HANDSHAKE_CONTEXT_SWITCH_TIMEOUT);
+            // SKIP_CONTEXT_SWITCH=true: post-retrain runs inside the coordinated context switch, so the spin
+            // must NOT call run_routing() (full switch would desync the router's dedicated-NOC shadow counters).
+            erisc::datamover::handshake::
+                fabric_sender_side_handshake<ENABLE_RISC_CPU_DATA_CACHE, /*SKIP_CONTEXT_SWITCH=*/true>(
+                    handshake_addr,
+                    routing_table_l1->my_mesh_id,
+                    routing_table_l1->my_device_id,
+                    termination_signal_ptr,
+                    DEFAULT_HANDSHAKE_CONTEXT_SWITCH_TIMEOUT);
             fabric_dbg_ringbuf_push_marker(FABRIC_DBG_HANDSHAKE_SENDER_DONE);
         } else {
             fabric_dbg_ringbuf_push_marker(FABRIC_DBG_HANDSHAKE_RECV_ENTER);
-            erisc::datamover::handshake::fabric_receiver_side_handshake<ENABLE_RISC_CPU_DATA_CACHE>(
-                handshake_addr,
-                routing_table_l1->my_mesh_id,
-                routing_table_l1->my_device_id,
-                termination_signal_ptr,
-                DEFAULT_HANDSHAKE_CONTEXT_SWITCH_TIMEOUT);
+            // SKIP_CONTEXT_SWITCH=true: see sender-side note above.
+            erisc::datamover::handshake::
+                fabric_receiver_side_handshake<ENABLE_RISC_CPU_DATA_CACHE, /*SKIP_CONTEXT_SWITCH=*/true>(
+                    handshake_addr,
+                    routing_table_l1->my_mesh_id,
+                    routing_table_l1->my_device_id,
+                    termination_signal_ptr,
+                    DEFAULT_HANDSHAKE_CONTEXT_SWITCH_TIMEOUT);
             fabric_dbg_ringbuf_push_marker(FABRIC_DBG_HANDSHAKE_RECV_DONE);
         }
     }

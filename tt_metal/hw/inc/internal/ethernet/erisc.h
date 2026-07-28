@@ -64,9 +64,10 @@ inline __attribute__((always_inline)) void risc_context_switch_without_noc_sync(
     // its shadow counters after. (TEST-ONLY: this makes the "without_noc_sync" path do a full sync.)
     update_boot_results_eth_link_status_check();
     recover_eth_link_if_down();
-    // [TXRX MODE] Live TX/RX counter tracking re-enabled. The 7-point config-register snapshot probes are
-    // disabled (they would be flooded/evicted by this per-context-switch push), so the ring buffer is a
-    // TX/RX time series again. Flip both back to re-enable the config-register probes.
+    // [TXRX MODE] TX/RX counter time series re-enabled to measure tail-stall / lost-in-flight / frozen with
+    // the post-retrain handshake ENABLED. This floods/evicts the handshake markers (that's expected here --
+    // we're measuring traffic recovery, not debugging the handshake). Comment this out to go back to
+    // handshake-marker debug mode.
     fabric_dbg_ringbuf_push_txrx_counts();
 #endif
 #endif
