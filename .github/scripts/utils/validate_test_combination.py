@@ -73,9 +73,7 @@ def main(argv):
     def tier_ok(row_tier):
         return tier.strip().lower() == "all" or str(row_tier) == str(tier).strip()
 
-    matched = [
-        r for r in rows if r["sku"] in enabled and tier_ok(r["tier"]) and model_matches(r["model"], model)
-    ]
+    matched = [r for r in rows if r["sku"] in enabled and tier_ok(r["tier"]) and model_matches(r["model"], model)]
 
     print(f"Filters → SKUs={sorted(enabled)} tier={tier} model={model}")
     if matched:

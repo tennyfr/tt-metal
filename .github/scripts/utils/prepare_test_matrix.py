@@ -154,13 +154,16 @@ def substitute_cmd_placeholders(entry):
     paths) to be injected into the same base command.
     """
     cmd = entry.get("cmd")
-    # Some pipelines (e.g. vLLM Model Tests) have no `cmd`: the command is
-    # constructed in the impl workflow from structured per-entry fields. Nothing
-    # to substitute in that case.
+    # Some pipelines (e.g. vLLM Model Tests) have no `cmd` at all: the command is
+    # constructed in the impl workflow from structured per-entry fields. An absent
+    # `cmd` is therefore allowed, but a present-but-empty one stays an error — it
+    # would yield a matrix leg that runs nothing and reports success.
     if cmd is None:
         return
     if not isinstance(cmd, str):
         raise ValueError(f"cmd is not a string: {cmd}")
+    if not cmd.strip():
+        raise ValueError(f"cmd is present but empty for test '{entry.get('name', 'Unnamed Test')}'")
     for key, value in entry.items():
         placeholder = "{" + key + "}"
         if placeholder in cmd:
