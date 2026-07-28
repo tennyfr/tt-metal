@@ -308,13 +308,20 @@ static void down_links_bh_unsafe_impl(bool single_ended) {
         // PORT_ACTION args (op 1): still disabled. If re-enabled it must come before the call word below,
         // matching send_eth_msg() ordering so the FW never acts on a half-populated arg window.
         // cluster.write_to_device(args.data(), args.size() * sizeof(uint32_t), chip_id, core, first_arg_addr);
+        // [EXPERIMENT] Original link-down (RMW set bit0 of 0xFFBA2200) temporarily disabled. Instead try
+        // disabling RS_CTRL by writing 0x2 to 0xFFBA2428 -- testing whether a different down mechanism
+        // produces a retrain the raw handshake DMA can complete on.
         // RMW: set bit 0 of register 0xFFBA2200, preserving the other bits. Uses the register access
         // path (read_from_device_reg/write_to_device_reg) since this is an MMIO register, not memory.
-        constexpr uint64_t kReg = 0xFFBA2200;
-        uint32_t reg_val = 0;
-        cluster.read_from_device_reg(&reg_val, chip_id, core, kReg, sizeof(reg_val));
-        reg_val |= 0x1u;
-        cluster.write_to_device_reg(&reg_val, sizeof(reg_val), chip_id, core, kReg);
+        // constexpr uint64_t kReg = 0xFFBA2200;
+        // uint32_t reg_val = 0;
+        // cluster.read_from_device_reg(&reg_val, chip_id, core, kReg, sizeof(reg_val));
+        // reg_val |= 0x1u;
+        // cluster.write_to_device_reg(&reg_val, sizeof(reg_val), chip_id, core, kReg);
+        // Disable RS_CTRL: direct write of 0x2 to 0xFFBA2428.
+        constexpr uint64_t kRsCtrlReg = 0xFFBA2428;
+        uint32_t rs_ctrl_val = 0x2u;
+        cluster.write_to_device_reg(&rs_ctrl_val, sizeof(rs_ctrl_val), chip_id, core, kRsCtrlReg);
         // PORT_ACTION call word (op 2): disabled. Fire the mailbox message AFTER the RMW. No
         // wait-for-ready/done: this is fire-and-forget.
         // cluster.write_to_device(msg_vec.data(), msg_vec.size() * sizeof(uint32_t), chip_id, core, mailbox_addr);
