@@ -252,7 +252,7 @@
       timeout: 45
       tier: 2
   owner_id: U08E1JCDVNX # Pavle Petrovic
-  co-owner-2-id: U08CEGF78ET # Salar Hosseini Khorasgani
+  co-owner-2-id: U03PUAKE719 # Miguel Tairum Cruz
   team: models
 
 - name: "Llama-3.1-8B-Instruct (prefix caching)"
@@ -271,7 +271,7 @@
       timeout: 25
       tier: 2
   owner_id: U08E1JCDVNX # Pavle Petrovic
-  co-owner-2-id: U08CEGF78ET # Salar Hosseini Khorasgani
+  co-owner-2-id: U03PUAKE719 # Miguel Tairum Cruz
   team: models
 
 - name: "Llama-3.1-8B-Instruct"
@@ -346,7 +346,7 @@
       timeout: 65
       tier: 1
   owner_id: U08E1JCDVNX # Pavle Petrovic
-  co-owner-2-id: U08CEGF78ET # Salar Hosseini Khorasgani
+  co-owner-2-id: U03PUAKE719 # Miguel Tairum Cruz
   team: models
 
 # ── Qwen 3 ─────────────────────────────────────────────────────────
@@ -424,7 +424,7 @@
     wh_galaxy_perf:
       timeout: 15
       tier: 1
-  owner_id: U08CEGF78ET # Salar Hosseini Khorasgani
+  owner_id: U03PUAKE719 # Miguel Tairum Cruz
   team: models
 
 # ── Disabled entries (preserved for re-enable) ─────────────────────
@@ -468,5 +468,5 @@
 #     wh_llmbox:
 #       timeout: 15
 #       tier: 2
-#   owner_id: U08CEGF78ET # Salar Hosseini Khorasgani
+#   owner_id: U03PUAKE719 # Miguel Tairum Cruz
 #   team: models
