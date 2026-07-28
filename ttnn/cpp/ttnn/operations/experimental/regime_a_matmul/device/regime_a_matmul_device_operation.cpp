@@ -267,13 +267,23 @@ RegimeAMatmulDeviceOperation::invoke(
             diag_mask = static_cast<uint32_t>(v);
         }
     }
+    // TEST-ONLY in1 CB depth override (blocks). Unset/0 => production default (4). Hashed via attributes.
+    uint32_t cb1_depth = 0;
+    if (const char* e = std::getenv("TT_REGIME_A_CB1_DEPTH")) {
+        const long v = std::strtol(e, nullptr, 10);
+        if (v > 0 && v <= 256) {
+            cb1_depth = static_cast<uint32_t>(v);
+        }
+    }
+
     return {
         operation_attributes_t{
             .config = config,
             .fused_activation = std::move(fused_activation),
             .fused_ternary_scalar = fused_ternary_scalar,
             .chunks = chunks,
-            .diag_mask = diag_mask},
+            .diag_mask = diag_mask,
+            .cb1_depth = cb1_depth},
         tensor_args_t{
             .input_tensor = input_tensor,
             .weight_tensor = weight_tensor,

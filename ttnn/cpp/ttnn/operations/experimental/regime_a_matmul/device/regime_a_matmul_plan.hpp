@@ -94,6 +94,12 @@ struct PlanInputs {
     // Tile byte sizes.
     uint32_t tb{kTileBytesBf16};  // bf16 tile
     uint32_t tf{kTileBytesFp32};  // fp32 tile
+
+    // in1 CB depth in BLOCKS. Production is 4 (the historical value); a TEST-ONLY override lets the depth be
+    // swept to separate a latency-x-concurrency-bound in1 read from a bandwidth-bound one. It only changes
+    // cb1's size and therefore the L1 total, so a too-large depth is rejected by the L1 budget check below —
+    // which is the intended, explicit failure mode rather than a silent clamp.
+    uint32_t cb1_depth{4};
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -305,7 +311,7 @@ inline PlanResult build_plan(const PlanInputs& in) {
     // --- CB sizing + L1 check (spec §5; cb7 only when Pk>1) ---
     CbSizes cb;
     cb.cb0_tiles = g.M_block_capacity * g.K_slice_capacity;  // == K_num_blocks_eff * M_block * kb
-    cb.cb1_tiles = 4u * kb * g.N_sub;
+    cb.cb1_tiles = (in.cb1_depth ? in.cb1_depth : 4u) * kb * g.N_sub;
     cb.cb2_tiles = 2u * g.M_block_capacity * g.N_sub;
     cb.cb3_tiles = g.M_block_capacity * g.N_sub;
     cb.cb7_tiles = (Pk > 1u) ? (2u * g.M_block_capacity * g.N_sub) : 0u;

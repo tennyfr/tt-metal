@@ -61,6 +61,13 @@ struct RegimeAMatmulParams {
     // asserted only for mask 0. Supported only on the unfused / single-output path (factory TT_FATALs else). ----
     uint32_t diag_mask = 0;
 
+    // ---- TEST-ONLY in1 CB depth override, in BLOCKS (NOT public API). 0 => production default (4).
+    // Set from TT_REGIME_A_CB1_DEPTH in invoke(); part of the reflection program-cache hash, so each depth
+    // is a distinct cached program and several depths can be measured in one process. Correctness-preserving
+    // (pure buffering); a depth that overflows the L1 budget is rejected by the planner with an explicit
+    // error rather than silently clamped. Does NOT feed the picker, so the chosen config is depth-invariant.
+    uint32_t cb1_depth = 0;
+
     // NOTE: numerics are FIXED production behavior, not options — BF16 in/out, HiFi2, FP32 dest-accumulation,
     // DRAM-interleaved output. There is deliberately no output dtype / memory_config / compute_kernel_config
     // here: they were previously accepted but ignored (an API-correctness hazard), so they are not part of the

@@ -246,7 +246,11 @@ RegimeAMatmulConfig auto_select_config(uint32_t Mt, uint32_t Kt, uint32_t Nt) {
 }
 
 plan::PlanResult make_and_build_plan(
-    IDevice* device, const Tensor& in0, const Tensor& in1, const std::optional<RegimeAMatmulConfig>& cfg_opt) {
+    IDevice* device,
+    const Tensor& in0,
+    const Tensor& in1,
+    const std::optional<RegimeAMatmulConfig>& cfg_opt,
+    uint32_t cb1_depth) {
     // Tile counts from logical shapes (tile = 32).
     const auto& a_shape = in0.logical_shape();
     const auto& w_shape = in1.logical_shape();
@@ -290,6 +294,11 @@ plan::PlanResult make_and_build_plan(
     in.l1_budget_bytes = kL1BudgetBytes;
     in.tb = kTileBytesBf16;  // bf16 tile bytes
     in.tf = kTileBytesFp32;  // fp32 tile bytes
+    // NOTE: cb1_depth deliberately does NOT feed auto_select_config, so the picked config is identical at
+    // every depth and a depth sweep is a clean A/B of buffering alone.
+    if (cb1_depth) {
+        in.cb1_depth = cb1_depth;
+    }
 
     return plan::build_plan(in);
 }

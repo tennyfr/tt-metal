@@ -964,11 +964,21 @@ RegimeAMatmulProgramFactory::cached_program_t RegimeAMatmulProgramFactory::creat
     const RegimeAMatmulConfig cfg = operation_attributes.config.value_or(auto_select_config(Mt_r, Kt_r, Nt_r));
 
     // ---- Run the pure host planner ----
-    auto planres = make_and_build_plan(device, in0, in1, cfg);
+    auto planres = make_and_build_plan(device, in0, in1, cfg, operation_attributes.cb1_depth);
     TT_FATAL(planres.ok(), "regime_a_matmul planner rejected config: {}", planres.error);
     plan::ExecutionPlan& P = *planres.plan;  // mutable: the ring-order diag overrides ring_pos/next/prev below
     const plan::Geometry& geo = P.geo;
     const plan::CbSizes& cb = P.cb;
+
+    if (operation_attributes.cb1_depth != 0u) {
+        log_info(
+            tt::LogOp,
+            "regime_a_matmul cb1_depth={} -> cb1={} tiles, total L1 {} B of {} B budget",
+            operation_attributes.cb1_depth,
+            cb.cb1_tiles,
+            cb.l1_bytes,
+            plan::kL1BudgetBytes);
+    }
 
     const uint32_t Pk = cfg.k_slices ? cfg.k_slices : 1u;
     const uint32_t Sm = cfg.m_slices ? cfg.m_slices : 1u;

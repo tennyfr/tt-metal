@@ -48,8 +48,13 @@ RegimeAMatmulConfig auto_select_config(uint32_t Mt, uint32_t Kt, uint32_t Nt);
 // assignments off the device, translate RegimeAMatmulConfig -> plan::RegimeAConfig, and run the pure
 // planner. When cfg is nullopt, auto_select_config picks the config. Returns the plan result verbatim;
 // the caller must TT_FATAL on !ok() with plan.error.
+// cb1_depth: in1 CB depth in blocks; 0 => the production default (4). TEST-ONLY sweep knob.
 plan::PlanResult make_and_build_plan(
-    tt::tt_metal::IDevice* device, const Tensor& in0, const Tensor& in1, const std::optional<RegimeAMatmulConfig>& cfg);
+    tt::tt_metal::IDevice* device,
+    const Tensor& in0,
+    const Tensor& in1,
+    const std::optional<RegimeAMatmulConfig>& cfg,
+    uint32_t cb1_depth = 0);
 
 // Build the canonical DRAM width-sharded MemoryConfig for the Regime-A in1 (weight) tensor.
 //
