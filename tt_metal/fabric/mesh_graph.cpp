@@ -60,9 +60,10 @@ RoutingDirection routing_direction_to_port_direction(const proto::RoutingDirecti
         case proto::RoutingDirection::W: return RoutingDirection::W;
         case proto::RoutingDirection::C: return RoutingDirection::C;
         case proto::RoutingDirection::NONE: return RoutingDirection::NONE;
-        default: TT_THROW(
-            "Invalid routing direction: {}",
-            static_cast<std::underlying_type_t<proto::RoutingDirection>>(routing_direction));
+        default:
+            TT_THROW(
+                "Invalid routing direction: {}",
+                static_cast<std::underlying_type_t<proto::RoutingDirection>>(routing_direction));
     }
 }
 
@@ -203,11 +204,11 @@ std::unordered_map<ChipId, RouterEdge> MeshGraph::get_valid_connections(
     MeshCoordinate S(src_mesh_coord[0] + 1, src_mesh_coord[1]);
     MeshCoordinate W(src_mesh_coord[0], src_mesh_coord[1] - 1);
 
-    if (has_flag(fabric_type, FabricType::TORUS_X) and mesh_shape[1] > 1) {
+    if (has_genuine_torus_axis(fabric_type, mesh_shape, 1)) {
         E = MeshCoordinate(src_mesh_coord[0], (src_mesh_coord[1] + 1) % mesh_shape[1]);
         W = MeshCoordinate(src_mesh_coord[0], (src_mesh_coord[1] - 1 + mesh_shape[1]) % mesh_shape[1]);
     }
-    if (has_flag(fabric_type, FabricType::TORUS_Y) and mesh_shape[0] > 1) {
+    if (has_genuine_torus_axis(fabric_type, mesh_shape, 0)) {
         N = MeshCoordinate((src_mesh_coord[0] - 1 + mesh_shape[0]) % mesh_shape[0], src_mesh_coord[1]);
         S = MeshCoordinate((src_mesh_coord[0] + 1) % mesh_shape[0], src_mesh_coord[1]);
     }
@@ -454,7 +455,8 @@ void MeshGraph::initialize_from_mgd(
         }
 
         // Populate mesh_host_ranks_
-        this->mesh_host_ranks_[*mesh_id] = tt_metal::distributed::MeshContainer<MeshHostRankId>(host_shape, mesh_host_ranks_values);
+        this->mesh_host_ranks_[*mesh_id] =
+            tt_metal::distributed::MeshContainer<MeshHostRankId>(host_shape, mesh_host_ranks_values);
 
         // Populate mesh_to_chip_ids
         std::vector<ChipId> chip_ids(mesh_shape[0] * mesh_shape[1]);
@@ -464,7 +466,7 @@ void MeshGraph::initialize_from_mgd(
 
         // Get the edge ports of each mesh
         std::uint32_t chan_id = 0;
-        if (!has_flag(effective_fabric_type, FabricType::TORUS_Y)) {
+        if (!has_genuine_torus_axis(effective_fabric_type, mesh_shape, 0)) {
             // North, start from NW corner
             for (std::uint32_t chip_id = 0; chip_id < mesh_shape[1]; chip_id++) {
                 for (std::uint32_t i = 0; i < chip_spec_.num_eth_ports_per_direction; i++) {
@@ -481,7 +483,7 @@ void MeshGraph::initialize_from_mgd(
                 }
             }
         }
-        if (!has_flag(effective_fabric_type, FabricType::TORUS_X)) {
+        if (!has_genuine_torus_axis(effective_fabric_type, mesh_shape, 1)) {
             // East, start from NE corner
             chan_id = 0;
             for (std::uint32_t chip_id = (mesh_shape[1] - 1); chip_id < (mesh_shape[0] * mesh_shape[1]);
@@ -528,23 +530,7 @@ void MeshGraph::initialize_from_mgd(
             switch_desc->device_topology().dims().at(0), switch_desc->device_topology().dims().at(1));
 
         // Build intra-mesh connectivity based on FabricConfig override (if provided) or MGD's fabric type
-        FabricType mgd_fabric_type;
-        const auto& dim_types = switch_desc->device_topology().dim_types();
-        if (dim_types.size() < 2) {
-            mgd_fabric_type = FabricType::MESH;
-        } else {
-            bool y_is_ring = (dim_types[0] == proto::TorusTopology::RING);
-            bool x_is_ring = (dim_types[1] == proto::TorusTopology::RING);
-            if (y_is_ring && x_is_ring) {
-                mgd_fabric_type = FabricType::TORUS_XY;
-            } else if (y_is_ring) {
-                mgd_fabric_type = FabricType::TORUS_Y;
-            } else if (x_is_ring) {
-                mgd_fabric_type = FabricType::TORUS_X;
-            } else {
-                mgd_fabric_type = FabricType::MESH;
-            }
-        }
+        FabricType mgd_fabric_type = MeshGraphDescriptor::infer_fabric_type_from_dim_types(switch_desc);
         FabricType effective_fabric_type;
 
         if (fabric_config.has_value()) {
@@ -602,7 +588,7 @@ void MeshGraph::initialize_from_mgd(
             std::max(mesh_edge_ports_to_chip_id_.size(), static_cast<size_t>(*switch_mesh_id + 1)));
         std::uint32_t chan_id = 0;
 
-        if (!has_flag(effective_fabric_type, FabricType::TORUS_Y)) {
+        if (!has_genuine_torus_axis(effective_fabric_type, switch_shape, 0)) {
             // North
             for (std::uint32_t chip_id = 0; chip_id < switch_shape[1]; chip_id++) {
                 for (std::uint32_t i = 0; i < chip_spec_.num_eth_ports_per_direction; i++) {
@@ -619,7 +605,7 @@ void MeshGraph::initialize_from_mgd(
                 }
             }
         }
-        if (!has_flag(effective_fabric_type, FabricType::TORUS_X)) {
+        if (!has_genuine_torus_axis(effective_fabric_type, switch_shape, 1)) {
             // East
             chan_id = 0;
             for (std::uint32_t chip_id = (switch_shape[1] - 1); chip_id < (switch_shape[0] * switch_shape[1]);

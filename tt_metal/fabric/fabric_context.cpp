@@ -346,16 +346,7 @@ bool FabricContext::need_deadlock_avoidance_support(eth_chan_directions directio
         return true;
     }
     if (topology_ == Topology::Torus) {
-        const auto fabric_type = get_fabric_type(fabric_config_, is_ubb_galaxy_);
-        // if we are not torused along a dimension, we dont need deadlock avoidance for that direction
-        const bool is_north_south =
-            (direction == eth_chan_directions::NORTH || direction == eth_chan_directions::SOUTH);
-        const bool is_east_west = (direction == eth_chan_directions::EAST || direction == eth_chan_directions::WEST);
-
-        const bool torus_mismatch = (fabric_type == FabricType::TORUS_X && is_north_south) ||
-                                    (fabric_type == FabricType::TORUS_Y && is_east_west);
-
-        return !torus_mismatch;
+        return requires_torus_deadlock_avoidance(get_fabric_type(fabric_config_, is_ubb_galaxy_), direction);
     }
 
     return false;

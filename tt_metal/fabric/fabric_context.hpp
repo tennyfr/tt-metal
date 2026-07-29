@@ -21,7 +21,6 @@ namespace tt::tt_fabric {
 // Forward declaration
 class FabricBuilderContext;
 
-
 /**
  * FabricContext
  *

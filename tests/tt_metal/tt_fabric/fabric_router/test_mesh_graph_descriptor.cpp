@@ -157,6 +157,27 @@ TEST(MeshGraphDescriptorTests, ParsesFromTextProtoString) {
     EXPECT_NO_THROW(MeshGraphDescriptor desc(text_proto));
 }
 
+TEST(MeshGraphDescriptorTests, InfersDeclaredTorusTypeForDegenerateDimensions) {
+    const std::string text_proto = R"proto(
+        mesh_descriptors: {
+          name: "M0"
+          arch: WORMHOLE_B0
+          device_topology: {
+            dims: [ 2, 4 ]
+            dim_types: [ RING, RING ]
+          }
+          channels: { count: 1 }
+          host_topology: { dims: [ 2, 4 ] }
+        }
+        top_level_instance: { mesh: { mesh_descriptor: "M0" mesh_id: 0 } }
+    )proto";
+
+    MeshGraphDescriptor desc(text_proto);
+    const auto& instance = desc.get_instance(desc.instances_by_name("M0").at(0));
+    const auto* mesh_desc = std::get<const proto::MeshDescriptor*>(instance.desc);
+    EXPECT_EQ(MeshGraphDescriptor::infer_fabric_type_from_dim_types(mesh_desc), FabricType::TORUS_XY);
+}
+
 TEST(MeshGraphDescriptorTests, ParsesFromTextProtoFile) {
     const std::filesystem::path text_proto_file_path =
         "tests/tt_metal/tt_fabric/custom_mesh_descriptors/mgd2_syntax_check_mesh_graph_descriptor.textproto";

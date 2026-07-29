@@ -246,25 +246,37 @@ std::unordered_map<std::string, uint32_t> MeshGraphDescriptor::count_instances_b
     return counts;
 }
 
-FabricType MeshGraphDescriptor::infer_fabric_type_from_dim_types(const proto::MeshDescriptor* mesh_desc) {
-    const auto& dim_types = mesh_desc->device_topology().dim_types();
+namespace {
+
+template <typename Descriptor>
+FabricType infer_declared_fabric_type_from_dim_types(const Descriptor* descriptor) {
+    const auto& dim_types = descriptor->device_topology().dim_types();
     if (dim_types.size() < 2) {
         return FabricType::MESH;
     }
 
-    bool y_is_ring = (dim_types[0] == proto::TorusTopology::RING);
-    bool x_is_ring = (dim_types[1] == proto::TorusTopology::RING);
+    const bool y_is_ring = (dim_types[0] == proto::TorusTopology::RING);
+    const bool x_is_ring = (dim_types[1] == proto::TorusTopology::RING);
 
+    FabricType fabric_type = FabricType::MESH;
     if (y_is_ring && x_is_ring) {
-        return FabricType::TORUS_XY;
+        fabric_type = FabricType::TORUS_XY;
+    } else if (y_is_ring) {
+        fabric_type = FabricType::TORUS_Y;
+    } else if (x_is_ring) {
+        fabric_type = FabricType::TORUS_X;
     }
-    if (y_is_ring) {
-        return FabricType::TORUS_Y;
-    }
-    if (x_is_ring) {
-        return FabricType::TORUS_X;
-    }
-    return FabricType::MESH;
+    return fabric_type;
+}
+
+}  // namespace
+
+FabricType MeshGraphDescriptor::infer_fabric_type_from_dim_types(const proto::MeshDescriptor* mesh_desc) {
+    return infer_declared_fabric_type_from_dim_types(mesh_desc);
+}
+
+FabricType MeshGraphDescriptor::infer_fabric_type_from_dim_types(const proto::SwitchDescriptor* switch_desc) {
+    return infer_declared_fabric_type_from_dim_types(switch_desc);
 }
 
 void MeshGraphDescriptor::set_defaults(proto::MeshGraphDescriptor& proto) {

@@ -313,7 +313,9 @@ public:
         return mesh_device_->worker_core_from_logical_core(logical_core);
     }
 
-    tt::tt_metal::CoreCoord get_worker_grid_size() const override { return mesh_device_->compute_with_storage_grid_size(); }
+    tt::tt_metal::CoreCoord get_worker_grid_size() const override {
+        return mesh_device_->compute_with_storage_grid_size();
+    }
 
     std::vector<tt::tt_metal::CoreCoord> get_available_worker_cores() const override {
         std::vector<tt::tt_metal::CoreCoord> all_cores;
@@ -843,7 +845,7 @@ public:
         const auto src_coord = get_device_coord(src_node_id);
         auto fabric_type = tt::tt_fabric::get_fabric_type(current_fabric_config_, is_ubb_galaxy());
 
-        if (has_flag(fabric_type, FabricType::TORUS_X)) {
+        if (tt::tt_fabric::has_genuine_torus_axis(fabric_type, mesh_shape_, EW_DIM)) {
             // EW dimension: need to cover (mesh_shape_[EW_DIM] - 1) total hops
             uint32_t ew_total_hops = mesh_shape_[EW_DIM] - 1;
             uint32_t ew_forward_hops = ew_total_hops / 2;                 // Half go in one direction
@@ -856,7 +858,7 @@ public:
             hops[RoutingDirection::W] = src_coord[EW_DIM];
         }
 
-        if (has_flag(fabric_type, FabricType::TORUS_Y)) {
+        if (tt::tt_fabric::has_genuine_torus_axis(fabric_type, mesh_shape_, NS_DIM)) {
             // NS dimension: need to cover (mesh_shape_[NS_DIM] - 1) total hops
             uint32_t ns_total_hops = mesh_shape_[NS_DIM] - 1;
             uint32_t ns_forward_hops = ns_total_hops / 2;                 // Half go in one direction
