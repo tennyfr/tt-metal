@@ -52,7 +52,9 @@ std::tuple<ttnn::Tensor, ttnn::Tensor, ttnn::Tensor> ring_joint_scaled_dot_produ
     bool is_balanced,
     bool is_cross,
     std::optional<uint32_t> kv_cache_batch_idx,
-    std::optional<uint32_t> kv_actual_isl) {
+    std::optional<uint32_t> kv_actual_isl,
+    const std::optional<ttnn::Tensor>& attention_sink,
+    std::optional<uint32_t> sliding_window_size) {
     auto strategy = use_column_major_ccl ? ttnn::ccl::CoreAllocationStrategy::COL_MAJOR
                                          : ttnn::ccl::CoreAllocationStrategy::ROW_MAJOR;
 
@@ -83,7 +85,9 @@ std::tuple<ttnn::Tensor, ttnn::Tensor, ttnn::Tensor> ring_joint_scaled_dot_produ
         compute_kernel_config,
         strategy,
         kv_cache_batch_idx,
-        kv_actual_isl);
+        kv_actual_isl,
+        attention_sink,
+        sliding_window_size);
     return outputs;
 }
 
@@ -597,12 +601,28 @@ void bind_sdpa(nb::module_& mod) {
                 This places CCL workers in a column (useful when reserving the last column for CCL).
                 If False (default), uses row-major allocation. Defaults to False.
             is_causal (bool): Whether to use causal attention masking. Defaults to False.
-            is_balanced (bool): Whether to use balanced attention computation. Defaults to False.
+            is_balanced (bool): Whether to use balanced causal computation. Defaults to False. Sliding ring
+                attention requires False. Dense causal attention has a triangular prefix-cost gradient, so its
+                balanced/zigzag scheduler pairs short- and long-prefix Q chunks and halves/skips dense ring
+                phases. Sliding uses one local-plus-halo pass; its one-hop geometry and complete-predecessor
+                requirement give every Q a full bounded window, so there is no prefix gradient to correct and
+                applying those phase transformations would omit valid K/V chunks. `(batch, Q head, Q chunk)`
+                work is instead distributed evenly across local Tensix cores.
             is_cross (bool): Whether to use non-causal cross-attention (short Q, long K/V). Defaults to False.
             kv_cache_batch_idx (int, optional): Selects the shared K/V cache batch slot when K and V are full caches.
             kv_actual_isl (int, optional): Prior valid global KV length before this fixed-size chunk.
                 When passed, enables KV-pad-aware rotation and derives current valid tokens as
                 logical_n - kv_actual_isl.
+            attention_sink (ttnn.Tensor, optional): Per-query-head attention sink with logical shape
+                [1 x nqh x 1 x 1], sharded across the tensor-parallel head axis and replicated across
+                the sequence-parallel ring. The ring-attention sink path requires BF16, streaming
+                compute, causal separate-K/V attention, and supports both full-causal and
+                sliding-window attention. Defaults to None.
+            sliding_window_size (int, optional): Causal attention window in tokens. The ring reader and
+                compute kernels prune K chunks outside the window. Ring attention supports a one-hop
+                predecessor halo: the K-chunk-rounded window tail must fit in one local Q/KV slab.
+                The validated GPT-OSS configuration uses local 8Q:1K:1V heads with D64, BF16 Q,
+                BFP8_B K/V, SP4 production or SP8 test topology, and chunked prefill without joint tokens.
 
         Chunked-prefill mode is entered implicitly when input_tensor_q's per-device seq
         length is less than input_tensor_k's (Q is the latest slab; K is the populated
@@ -653,7 +673,9 @@ void bind_sdpa(nb::module_& mod) {
         nb::arg("is_balanced").noconvert() = false,
         nb::arg("is_cross").noconvert() = false,
         nb::arg("kv_cache_batch_idx").noconvert() = nb::none(),
-        nb::arg("kv_actual_isl").noconvert() = nb::none());
+        nb::arg("kv_actual_isl").noconvert() = nb::none(),
+        nb::arg("attention_sink") = nb::none(),
+        nb::arg("sliding_window_size") = nb::none());
 
     const auto* const ring_mla_doc = R"doc(
         Causal Ring MLA attention over a single KV tensor.
