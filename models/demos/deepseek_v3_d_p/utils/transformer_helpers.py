@@ -71,6 +71,9 @@ ABC_1K_PAD_LEFT_1024 = TRACE_DIR_BASE / "ABC_1k_prefill_padd_left_1024"
 LONGBOOK_QA_ENG_25600 = TRACE_DIR_BASE / "longbook_qa_eng_prefill_25600_nopad"
 LONGBOOK_QA_ENG_5120 = TRACE_DIR_BASE / "longbook_qa_eng_prefill_5120_nopad"
 LONGBOOK_QA_ENG_56320 = TRACE_DIR_BASE / "longbook_qa_eng_prefill_56320_nopad"
+# Default location of the dispatch/combine perf capture (both models' cases, keyed by model).
+# Used by load_captured_routing when TT_DS_USE_CAPTURED_INDICES is not set.
+DISPATCH_COMBINE_EXPERT_ROUTING = TRACE_DIR_BASE / "dispatch_combine_expert_routing"
 
 # Identity-based trace lookup: (input_source, isl_total, padding_side) -> Path, where
 # isl_total is the trace's NATIVE (generated) sequence length.
