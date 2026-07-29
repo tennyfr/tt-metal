@@ -20,6 +20,13 @@
 #include <stdint.h>
 #include "api/dataflow/dataflow_api.h"
 
+// Per-phase timing zones, compile-gated. Absent (mask 0) => no-op => production is byte-identical.
+#if defined(RA_PROFILE_ZONES)
+#define RA_ZONE(n) DeviceZoneScopedN(n)
+#else
+#define RA_ZONE(n)
+#endif
+
 void kernel_main() {
     constexpr uint32_t M_block = get_compile_time_arg_val(0);
     constexpr uint32_t K_block = get_compile_time_arg_val(1);       // kb
@@ -344,7 +351,130 @@ void kernel_main() {
         return;
     }
 
-#if defined(RSCATTER) && defined(RS_DIRECT)
+#if defined(RSCATTER) && defined(RS_STRIPED)
+    // ---- Pk > 1: S-WAY STRIPED OWNER-GATHER. Only S of the group's Pk cores own output; owner j owns stripe j
+    // (rs_T/S tiles). Every core writes its partial for stripe j straight to owner j, so the group sends
+    // S*(Pk-1) messages instead of the full exchange's Pk*(Pk-1) -- Pk/S fewer, same total bytes. An owner keeps
+    // its OWN stripe where it already is (in the fp32 intermediate CB), so there is NO loopback NoC traffic.
+    //
+    // Arrivals are split across TWO semaphores by sender position so the owner can reduce the first half of its
+    // partials while the second half is still in flight (incremental reduction). The receive area is
+    // DOUBLE-BUFFERED (generation = nb & 1), so a sender can fill generation nb while the owner still reduces
+    // nb-1; a sender therefore only has to know generation nb-2 was consumed, which is what the credit counter
+    // tracks (each owner credits each of its Pk-1 senders once per sub-block => S credits per sender).
+    const uint32_t P = rs_P;
+    const uint32_t S = get_arg_val<uint32_t>(24);
+    const uint32_t my_pos = get_arg_val<uint32_t>(25);
+    const uint32_t my_stripe = get_arg_val<uint32_t>(26);
+    const uint32_t na = get_arg_val<uint32_t>(27);  // senders with position < na use arrival counter A
+    const uint32_t b_sem_id = get_arg_val<uint32_t>(28);
+    const bool is_owner = (my_stripe < S);
+    const uint32_t stripe_tiles = (rs_T + S - 1u) / S;
+    const uint32_t stripe_bytes = stripe_tiles * tile_bytes;
+    const uint32_t gen_bytes = P * stripe_bytes;
+    constexpr uint32_t cb_send = 4;
+    constexpr uint32_t cb_recv = 5;
+    const uint32_t recv_base = get_write_ptr(cb_recv);  // identical offset on every core
+    const uint32_t a_addr = get_semaphore(red_sem_id);
+    volatile tt_l1_ptr uint32_t* a_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(a_addr);
+    const uint32_t b_addr = get_semaphore(b_sem_id);
+    volatile tt_l1_ptr uint32_t* b_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(b_addr);
+    const uint32_t credit_addr = get_semaphore(redfree_sem_id);
+    volatile tt_l1_ptr uint32_t* credit_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(credit_addr);
+    auto owner_pos = [&](uint32_t j) { return get_arg_val<uint32_t>(29 + j); };
+    auto gcx = [&](uint32_t p) { return get_arg_val<uint32_t>(29 + S + p * 2u); };
+    auto gcy = [&](uint32_t p) { return get_arg_val<uint32_t>(30 + S + p * 2u); };
+    // partials this owner expects per sub-block, split by the sender's counter
+    const uint32_t exp_a = is_owner ? (na - (my_pos < na ? 1u : 0u)) : 0u;
+    const uint32_t exp_b = is_owner ? ((P - na) - (my_pos >= na ? 1u : 0u)) : 0u;
+    // Credits an owner sends go to every group member EXCEPT itself, so an owner receives one fewer credit per
+    // sub-block than a non-owner. Getting this wrong deadlocks every owner from sub-block 2 onward.
+    const uint32_t cred_per_sb = S - (is_owner ? 1u : 0u);
+    const uint32_t own_beg = is_owner ? (my_stripe * stripe_tiles) : 0u;
+    const uint32_t own_end = is_owner ? ((own_beg + stripe_tiles < rs_T) ? own_beg + stripe_tiles : rs_T) : 0u;
+
+    for (uint32_t nb = 0; nb < N_bpc; ++nb) {
+        const uint32_t n_base = nb * N_block;
+        if (nb >= 2u) {
+            RA_ZONE("Z_RSS_CREDITWAIT");
+            noc_semaphore_wait_min(credit_ptr, (nb - 1u) * cred_per_sb);  // generation nb-2 consumed everywhere
+        }
+        cb_wait_front(cb_send, rs_T);  // compute staged the bf16 image of our whole partial
+        const uint32_t img = get_read_ptr(cb_send);
+        const uint32_t gen = (nb & 1u) * gen_bytes;
+        if (is_owner) {
+            cb_reserve_back(cb_recv, P * stripe_tiles);
+        }
+        {
+            RA_ZONE("Z_RSS_PAYLOAD");
+            for (uint32_t j = 0; j < S; ++j) {
+                const uint32_t op = owner_pos(j);
+                if (op == my_pos) {
+                    continue;  // no loopback: our own stripe stays in the fp32 intermediate CB
+                }
+                const uint32_t beg = j * stripe_tiles;
+                const uint32_t nby = ((beg + stripe_tiles < rs_T) ? stripe_tiles : (rs_T - beg)) * tile_bytes;
+                noc_async_write(
+                    img + beg * tile_bytes,
+                    get_noc_addr(gcx(op), gcy(op), recv_base + gen + my_pos * stripe_bytes),
+                    nby);
+            }
+            // readiness AFTER payload, same peer + same NoC (ordered), so no owner sees a partial early
+            const uint32_t my_sem = (my_pos < na) ? a_addr : b_addr;
+            for (uint32_t j = 0; j < S; ++j) {
+                const uint32_t op = owner_pos(j);
+                if (op != my_pos) {
+                    noc_semaphore_inc(get_noc_addr(gcx(op), gcy(op), my_sem), 1);
+                }
+            }
+            noc_async_writes_flushed();  // payload departed cb_send -> compute may refill it
+        }
+        cb_pop_front(cb_send, rs_T);
+
+        if (is_owner) {
+            // Incremental: release the A half to compute as soon as it lands, then the B half.
+            {
+                RA_ZONE("Z_RSS_ARRIVE_A");
+                noc_semaphore_wait_min(a_ptr, (nb + 1u) * exp_a);
+            }
+            cb_push_back(cb_recv, na * stripe_tiles);
+            {
+                RA_ZONE("Z_RSS_ARRIVE_B");
+                noc_semaphore_wait_min(b_ptr, (nb + 1u) * exp_b);
+            }
+            cb_push_back(cb_recv, (P - na) * stripe_tiles);
+
+            {
+                // Blocks until compute has finished reducing this stripe, so this zone IS the reduction cost as
+                // seen from the data-movement core (compute-side zones are unavailable on TRISC).
+                RA_ZONE("Z_RSS_REDUCEWAIT");
+                cb_wait_front(out_cb, stripe_tiles);
+            }
+            {
+                RA_ZONE("Z_RSS_OUTWRITE");
+                const uint32_t rr = get_read_ptr(out_cb);
+                for (uint32_t idx = own_beg; idx < own_end; ++idx) {
+                    const uint32_t m = idx / N_block;
+                    const uint32_t n = idx - m * N_block;
+                    if (m < valid_m && (n_base + n) < valid_n) {
+                        noc_async_write_page(
+                            (m_start + m) * Nt + (n_start + n_base + n), out, rr + (idx - own_beg) * tile_bytes);
+                    }
+                }
+                noc_async_writes_flushed();
+                cb_pop_front(out_cb, stripe_tiles);
+            }
+            {
+                RA_ZONE("Z_RSS_CREDITSEND");
+                for (uint32_t p = 0; p < P; ++p) {
+                    if (p != my_pos) {
+                        noc_semaphore_inc(get_noc_addr(gcx(p), gcy(p), credit_addr), 1);
+                    }
+                }
+            }
+        }
+    }
+#elif defined(RSCATTER) && defined(RS_DIRECT)
     // ---- Pk > 1: DIRECT-EXCHANGE REDUCE-SCATTER (all-to-all within the group of Pk k-slice cores). ----
     // The ring variant below needs Pk-1 SEQUENTIAL rounds, each paying a semaphore round-trip. Here every core
     // issues all Pk partial-writes back to back and then waits ONCE for all Pk arrivals, so the Pk-1 sequential

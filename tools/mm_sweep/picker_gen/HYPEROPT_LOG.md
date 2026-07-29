@@ -892,3 +892,52 @@ multicastable (different data per destination). That would likely close about ha
 No production change - the gate still selects the RING, which is better on all 14 adopted shapes. bit26 is
 default-off. Also stopped allocating the chain's cb7 running-sum CB when reduce-scatter is active (it is never
 touched there). 111/111 correctness tests pass.
+
+### F13. S-WAY STRIPED OWNER-GATHER (bits 27-28): implemented, DEADLOCKS, NO measurement obtained
+
+Requested design, all of it implemented: S in {2,3,4} owners per group instead of S=Pk; direct writes to
+physically optimised owners; no loopback NoC traffic; FP32 DST accumulation per stripe; double-buffered receive;
+incremental (two-stage) reduction; and separate profiler zones for payload / arrival-A / arrival-B / credit-wait
+/ credit-send / reduce-wait / output-write.
+
+**Status: the protocol still deadlocks and I did not get a single performance number. Two device resets were
+needed. Production is untouched and verified (111/111 after the final reset).**
+
+The rationale for trying it: the group sends S(Pk-1) messages instead of the full exchange's Pk(Pk-1) -- Pk/S
+fewer -- while moving the SAME total bytes. F12 showed the residual cost of full direct exchange is message
+COUNT (36 NoC transactions per core per sub-block vs the chain's 3), so cutting messages Pk/S-fold is the right
+target.
+
+What was built:
+- **Owner selection is provably optimal, not a search.** Every member writes to every owner, so total hop cost
+  is separable: sum over owners of (sum over senders of dist(sender->owner)). Ranking candidates by INBOUND cost
+  and taking the S cheapest is therefore exact. Distance is on the sender's writer NoC (asymmetric on the torus).
+- **No loopback:** an owner keeps its own stripe where it already is, in the fp32 intermediate CB, and seeds DST
+  from it. Nothing is written to self.
+- **Incremental reduction:** arrivals are split across two semaphores by sender position, so the writer releases
+  the first half of the partials to compute while the second half is still in flight.
+- **DST accumulation** chunked to the 4-tile fp32 DST limit (a stripe of rs_T/S tiles exceeds DST for S<4), so
+  each DST group costs 2 inits and one pack per output tile rather than one per source.
+
+**Bug found and fixed (real, would have bitten any variant):** an owner credits every group member EXCEPT
+itself, so an owner receives S-1 credits per sub-block while a non-owner receives S. The wait threshold assumed
+S for everyone, which deadlocks every owner from sub-block 2 onward. Fixed with a role-dependent
+`cred_per_sb = S - (is_owner ? 1 : 0)`.
+
+**A second deadlock remains unisolated.** After that fix, S=2 on 512x6144x4608 still hangs (all 96 workers time
+out), and it wedges the board hard enough that the following runs fail at device init - which is what destroyed
+the S=3/S=4 data points too. Candidates I ruled out by inspection: arrival counts (exp_a/exp_b correctly exclude
+self), semaphore addressing, cb_send depth, non-owner CB usage, and the credit arithmetic above. Candidates NOT
+ruled out: the cb_recv reserve/push accounting across the two-stage push against a 2-generation buffer, and the
+interaction between an owner holding intermediate_cb (a single-slot CB) across the whole exchange and the next
+sub-block's matmul needing to reserve it.
+
+**Process lessons worth keeping:**
+1. My first three masks were WRONG - I wrote 150994944 for "S=3" but that is bit27+bit24 (S=2 plus the TRID
+   pipeline), so an early "PCC=1.000000" was a different configuration entirely. Multi-bit encoded fields need
+   the mask arithmetic checked, not eyeballed.
+2. `tt-smi -r` chained after `pkill` in one compound command never ran (the whole command was killed), so the
+   board stayed wedged and the next three runs failed at init for a reason unrelated to the code under test.
+   Reset must be its own command - the same lesson already recorded once in this log.
+
+Kept behind default-off diagnostic bits so it can be picked up later; nothing in the production path changed.
