@@ -55,7 +55,7 @@ def _fused_base_addr(t):
     """
     if hasattr(t, "is_per_core_allocated") and t.is_per_core_allocated():
         core = t.memory_config().shard_spec.grid.bounding_box().start
-        return t.experimental_per_core_buffer_address(core)
+        return t.experimental_per_core_buffer_address(t.device_coords()[0], core)
     return t.buffer_address()
 
 
