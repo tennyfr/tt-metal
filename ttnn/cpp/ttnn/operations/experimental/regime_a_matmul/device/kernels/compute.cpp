@@ -398,6 +398,11 @@ void kernel_main() {
     const uint32_t N_end_tile = get_arg_val<uint32_t>(argidx++);
     // split-K plan B: 1 if this is the bottom K-band (no incoming running sum), else 0. Always present.
     [[maybe_unused]] const uint32_t is_reduce_bottom = get_arg_val<uint32_t>(argidx++);
+#if defined(REDUCE_MEET)
+    // Number of incoming partials for this core: 0 at a chain end, 1 normally, 2 at the meet root. The root
+    // adds them one at a time in channel order, which matches the order the writer pushes them.
+    const uint32_t red_nrecv = get_arg_val<uint32_t>(argidx++);
+#endif
 
 // Any fusion active => the reduction ROOT (is_top) applies bias/activation/addcmul exactly once after the
 // split-K partials are summed. Non-root bands forward the RAW partial (no fusion). When no fusion is active
@@ -531,6 +536,22 @@ void kernel_main() {
             // Diagnostic: no cross-band accumulation. Every band packs its LOCAL partial to out_cb (no
             // cb_reduce wait/pop); the writer (also SKIP_REDUCTION) writes each local partial directly.
             copy_block(intermediate_cb, out_cb, M_block_tiles, N_block_tiles);
+#elif defined(REDUCE_MEET)
+            if (red_nrecv == 0u) {
+                copy_block(intermediate_cb, out_cb, M_block_tiles, N_block_tiles);
+            } else {
+                // Fold all but the last incoming partial into the accumulator in place, then fold the last one
+                // straight into out_cb. Same total arithmetic as the linear chain, just a different order, so
+                // the result is PCC-equal but not bit-identical (float addition is not associative).
+                for (uint32_t c = 0; c + 1u < red_nrecv; ++c) {
+                    cb_wait_front(cb_reduce, out_block_num_tiles);
+                    reduce_add_in_place(intermediate_cb, cb_reduce, M_block_tiles, N_block_tiles);
+                    cb_pop_front(cb_reduce, out_block_num_tiles);
+                }
+                cb_wait_front(cb_reduce, out_block_num_tiles);
+                reduce_add_block(intermediate_cb, cb_reduce, out_cb, M_block_tiles, N_block_tiles);
+                cb_pop_front(cb_reduce, out_block_num_tiles);
+            }
 #else
             if (is_reduce_bottom) {
                 copy_block(intermediate_cb, out_cb, M_block_tiles, N_block_tiles);

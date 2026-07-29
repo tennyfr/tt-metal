@@ -317,9 +317,11 @@ plan::PlanResult make_and_build_plan(
     if (cb1_depth) {
         in.cb1_depth = cb1_depth;
     }
-    // diag bits 18-19 select the reduction-CB depth: 0 -> 2 (production), 1 -> 4, 2 -> 8.
+    // diag bit20 selects the meet-in-the-middle reduction topology; bits 18-19 the reduction-CB depth.
     if (const char* e = std::getenv("TT_REGIME_A_DIAG_MASK")) {
-        const long sel = (std::strtol(e, nullptr, 10) >> 18) & 0x3L;
+        const long dm = std::strtol(e, nullptr, 10);
+        in.reduce_meet = (dm & 0x100000L) != 0L;
+        const long sel = (dm >> 18) & 0x3L;
         if (sel == 1L) {
             in.cb7_depth = 4u;
         } else if (sel == 2L) {

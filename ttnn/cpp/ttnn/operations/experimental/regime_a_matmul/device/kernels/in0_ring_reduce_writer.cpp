@@ -212,18 +212,34 @@ void kernel_main() {
     // single-output diagnostic build (bit0/bit1 set); never present in production, so this read + the guard
     // below compile to nothing in the mask-0 binary. 1 => skip this core's in0 DRAM read (leave stale L1,
     // preserve CB reserve/push/pop, pointer advance, barrier, ring forwarding, semaphores, compute). ----
+    constexpr uint32_t kDiagBase0 = 17u;
 #if defined(SKIP_ALL_IN0_READ) || defined(SKIP_REDUNDANT_IN0_READ)
-    const uint32_t in0_skip = get_arg_val<uint32_t>(17);
-#define DIAG_ARG_BASE 18
+    const uint32_t in0_skip = get_arg_val<uint32_t>(kDiagBase0);
+    constexpr uint32_t kDiagBase1 = kDiagBase0 + 1u;
 #else
-#define DIAG_ARG_BASE 17
+    constexpr uint32_t kDiagBase1 = kDiagBase0;
 #endif
+#define DIAG_ARG_BASE kDiagBase1
     // ---- TEST-ONLY ring-forward PERTURBATION args (bit6 FWD_NEAR): nearest program core on this core's
     // writer NoC. Payload only; the readiness semaphore below still targets the TRUE ring successor, so the
     // ring's step count / dependency chain is unchanged and only hop distance is removed. ----
 #if defined(FWD_NEAR)
-    const uint32_t near_x = get_arg_val<uint32_t>(DIAG_ARG_BASE);
-    const uint32_t near_y = get_arg_val<uint32_t>(DIAG_ARG_BASE + 1);
+    const uint32_t near_x = get_arg_val<uint32_t>(kDiagBase1);
+    const uint32_t near_y = get_arg_val<uint32_t>(kDiagBase1 + 1);
+    constexpr uint32_t kDiagBase2 = kDiagBase1 + 2u;
+#else
+    constexpr uint32_t kDiagBase2 = kDiagBase1;
+#endif
+    // ---- MEET-IN-THE-MIDDLE reduction args (bit20). red_nrecv: incoming partials at this core (2 only at the
+    // meet root). red_channel: which of the root's two channels THIS core sends on - channel 0 uses red_sem /
+    // red_prev, channel 1 uses red_sem2 / red_prev2, so the two arrivals can never be confused for each other
+    // (a single shared counter would be fungible and is exactly what corrupted earlier reduction work). ----
+#if defined(REDUCE_MEET)
+    const uint32_t red_nrecv = get_arg_val<uint32_t>(kDiagBase2);
+    const uint32_t red_channel = get_arg_val<uint32_t>(kDiagBase2 + 1);
+    const uint32_t red_prev2_x = get_arg_val<uint32_t>(kDiagBase2 + 2);
+    const uint32_t red_prev2_y = get_arg_val<uint32_t>(kDiagBase2 + 3);
+    const uint32_t red_slots = get_arg_val<uint32_t>(kDiagBase2 + 4);  // channels at my DESTINATION root
 #endif
 
     // ---- PHASE 1: in0 ring all-gather (balanced tails: read only valid M rows / valid K, else zero) ----
@@ -323,6 +339,12 @@ void kernel_main() {
     // write ptr drifts after receives).
     const uint32_t reduce_base = get_write_ptr(cb_reduce);
     const uint32_t red_addr = get_semaphore(red_sem_id);
+#if defined(REDUCE_MEET)
+    // channel-1 semaphore. The factory creates it immediately after red_sem, so the id is red_sem_id + 1.
+    const uint32_t red2_addr = get_semaphore(red_sem_id + 1u);
+    volatile tt_l1_ptr uint32_t* red2_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(red2_addr);
+    const uint64_t prev2_redfree = get_noc_addr(red_prev2_x, red_prev2_y, get_semaphore(redfree_sem_id));
+#endif
     volatile tt_l1_ptr uint32_t* red_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(red_addr);
     const uint32_t redfree_addr = get_semaphore(redfree_sem_id);
     volatile tt_l1_ptr uint32_t* redfree_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(redfree_addr);
@@ -353,12 +375,23 @@ void kernel_main() {
         noc_async_writes_flushed();
         cb_pop_front(out_cb, out_blk);
 #else
+#if defined(REDUCE_MEET)
+        // Receive red_nrecv partials, channel 0 first then channel 1, pushing each as it lands. Compute adds
+        // them in the same order, so the CB FIFO position of each push matches the slot the sender wrote.
+        for (uint32_t c = 0; c < red_nrecv; ++c) {
+            cb_reserve_back(cb_reduce, out_blk);
+            noc_semaphore_inc(c == 0u ? prev_redfree : prev2_redfree, 1);
+            noc_semaphore_wait_min(c == 0u ? red_ptr : red2_ptr, nb + 1);
+            cb_push_back(cb_reduce, out_blk);
+        }
+#else
         if (!is_bottom) {
             cb_reserve_back(cb_reduce, out_blk);  // wait our compute freed slot (nb-2)
             noc_semaphore_inc(prev_redfree, 1);   // tell prev: our slot (nb%2) is free for block nb
             noc_semaphore_wait_min(red_ptr, nb + 1);  // prev forwarded block nb into it (chain latency)
             cb_push_back(cb_reduce, out_blk);  // compute reduce_add's it -> out_cb, pops cb_reduce
         }
+#endif
 #if defined(FUSE_BIAS) || defined(FUSE_TERNARY)
         if (is_top) {
             feed_fused(nb);  // ROOT only: supply bias/residual/gate for compute's single fused epilogue
@@ -367,13 +400,25 @@ void kernel_main() {
         cb_wait_front(out_cb, out_blk);  // compute produced reduced (+ fused at top) block nb
         uint32_t r = get_read_ptr(out_cb);
         if (!is_top) {
-            noc_semaphore_wait_min(redfree_ptr, nb + 1);  // next signalled its slot (nb%2) is free
+            noc_semaphore_wait_min(redfree_ptr, nb + 1);  // next signalled its slot is free
+#if defined(REDUCE_MEET)
+            // slot = (nb % 2) * channels_at_destination + my channel, so the two senders never collide and the
+            // destination's FIFO order (channel 0 then channel 1, per nb) matches these offsets exactly.
+            const uint32_t red_slot = (nb % 2u) * red_slots + red_channel;
+            uint64_t dst = get_noc_addr(red_next_x, red_next_y, reduce_base + red_slot * out_blk_bytes);
+#else
             uint64_t dst = get_noc_addr(red_next_x, red_next_y, reduce_base + (nb % red_depth) * out_blk_bytes);
+#endif
             noc_async_write(r, dst, out_blk_bytes);
             // Pipelined: payload THEN signal to the SAME peer on the SAME NoC (ordered, like the in0 ring) so
             // the receiver never observes readiness before its partial-sum has landed. Flush (not a full
             // barrier) so the out_cb source slot is reusable; completion is deferred to the final barrier.
+#if defined(REDUCE_MEET)
+            noc_semaphore_inc(
+                get_noc_addr(red_next_x, red_next_y, red_channel == 0u ? red_addr : red2_addr), 1);
+#else
             noc_semaphore_inc(next_recv, 1);  // block nb delivered (ordered after the payload write)
+#endif
             noc_async_writes_flushed();       // payload departed L1 -> out_cb slot safe to reuse
         } else {
             // ROOT: issue output DRAM pages + flush (the reduction tail on the wall).

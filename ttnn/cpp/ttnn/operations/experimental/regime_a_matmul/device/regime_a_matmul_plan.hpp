@@ -106,6 +106,9 @@ struct PlanInputs {
     // further across sub-blocks. TEST-ONLY sweep knob; the kernel derives the slot modulus from the same
     // value (it is passed as the `use_reduce` compile arg), so the two can never disagree.
     uint32_t cb7_depth{2};
+
+    // Meet-in-the-middle split-K reduction topology (see CorePlan). TEST-ONLY; false keeps the linear chain.
+    bool reduce_meet{false};
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -185,8 +188,15 @@ struct CorePlan {
     // split-K reduction chain (spec §4).
     bool is_bottom{};         // kk == 0
     bool is_top{};            // kk == Pk-1
-    uint32_t red_next_idx{};  // core index of next k-slice (i+mfac); self if is_top
-    uint32_t red_prev_idx{};  // core index of prev k-slice (i-mfac); self if is_bottom
+    uint32_t red_next_idx{};  // core index of the next band in the chain; self if is_top
+    uint32_t red_prev_idx{};  // core index of the previous band (the one whose credit we return); self if bottom
+    // MEET-IN-THE-MIDDLE reduction (PlanInputs::reduce_meet). The linear chain roots at kk=Pk-1 and is Pk-1
+    // hops deep. Instead root at kk=Pk/2 and let bands below flow UP and bands above flow DOWN, so the depth
+    // is about Pk/2. The root then has TWO incoming partials, distinguished by CHANNEL (0 = from below,
+    // 1 = from above) with a separate semaphore each, and consumed sequentially.
+    uint32_t red_nrecv{1};      // incoming partials: 0 at a chain end, 1 normally, 2 at a meet root
+    uint32_t red_channel{};     // which channel THIS core sends on (0 = upward, 1 = downward)
+    uint32_t red_prev2_idx{};   // the root's second predecessor (only when red_nrecv == 2)
 };
 
 struct ExecutionPlan {
@@ -405,11 +415,32 @@ inline PlanResult build_plan(const PlanInputs& in) {
                 return res;
             }
 
-            // reduction chain links (spec §4)
-            cp.is_bottom = (kk == 0u);
-            cp.is_top = (kk == Pk - 1u);
-            cp.red_next_idx = cp.is_top ? i : (i + g.mfac);
-            cp.red_prev_idx = cp.is_bottom ? i : (i - g.mfac);
+            // reduction chain links (spec §4), linear or meet-in-the-middle
+            const uint32_t root_kk = (in.reduce_meet && Pk > 2u) ? (Pk / 2u) : (Pk - 1u);
+            const bool has_down = (Pk - 1u) > root_kk;  // is there a downward chain above the root?
+            cp.is_top = (kk == root_kk);
+            cp.is_bottom = (kk == 0u) || (has_down && kk == Pk - 1u);
+            cp.red_channel = (kk > root_kk) ? 1u : 0u;
+            if (cp.is_top) {
+                cp.red_next_idx = i;
+                cp.red_nrecv = has_down ? 2u : 1u;
+                cp.red_prev_idx = i - g.mfac;                       // from below
+                cp.red_prev2_idx = has_down ? (i + g.mfac) : i;     // from above
+            } else {
+                cp.red_next_idx = (kk < root_kk) ? (i + g.mfac) : (i - g.mfac);
+                cp.red_nrecv = cp.is_bottom ? 0u : 1u;
+                cp.red_prev_idx = cp.is_bottom ? i : ((kk > root_kk) ? (i + g.mfac) : (i - g.mfac));
+                cp.red_prev2_idx = i;
+            }
+            if (Pk == 1u) {  // no chain at all: every core is its own root
+                cp.is_top = true;
+                cp.is_bottom = true;
+                cp.red_next_idx = i;
+                cp.red_prev_idx = i;
+                cp.red_prev2_idx = i;
+                cp.red_nrecv = 0u;
+                cp.red_channel = 0u;
+            }
 
             plan.cores[i] = cp;
         }

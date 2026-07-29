@@ -259,7 +259,34 @@ offline model so future analysis matches. 111/111 correctness tests pass.
 
 This shape is now **17.4% faster than at the start of the log** (92.2 -> 76.16 us).
 
-### TOP REMAINING LEVER (measured, specified, not yet built): the reduction chain is 9-14% deep
+### F6. FAILED and INSTRUCTIVE: the reduction chain's cost is WORK, not depth
+
+Built the meet-in-the-middle chain described below (bit20): bands below the middle flow up, bands above flow
+down, meeting at a root in the middle, so the critical path drops from 11 hops to 6. It is correct (PCC
+1.000001 to 1.000134, no hangs, 111/111 tests) and gives **no speedup at all**:
+
+| shape | linear chain | meet-in-the-middle | change |
+|---|---|---|---|
+| 512x6144x4608 | 180.60 | 180.46 | +0.08% |
+| 256x2048x6144 | 76.23 | 76.12 | +0.15% |
+| 32x6144x1536 | 40.69 | 40.58 | +0.28% |
+| 512x6144x2304 | 109.75 | 110.16 | -0.38% |
+| 256x2048x2048 | 39.38 | 39.56 | -0.46% |
+
+Why the hypothesis was wrong: halving the DEPTH does not reduce the WORK. Whatever the topology, each of the
+Pk-1 non-root bands still performs exactly one full-block add and one full-block transfer. Meet-in-the-middle
+only shortens how long the LAST partial takes to arrive, and that latency was evidently already hidden. So the
+14.3% is real arithmetic and real traffic, not a serial tail.
+
+That also rules out a fan-in-2 tree for the same reason - it changes depth, not work - and reduce-scatter does
+not help either: it spreads the same total number of adds differently. To reduce this cost you would have to
+reduce the NUMBER of partial sums, i.e. use a smaller Pk, which the picker already trades off against
+parallelism. **Treating the reduction as closed.**
+
+Kept the implementation behind bit20 as a documented negative (default off; it also required a second receive
+semaphore, so the op now creates 6 instead of 5, well under the 16 available).
+
+### Original sizing of the reduction chain (kept for the record)
 
 We could never size the split-K reduction before, because deleting it makes every band write its own copy of
 the output (Pk times the output traffic) and that artefact swamped the result. Comparing "skip reduction AND
