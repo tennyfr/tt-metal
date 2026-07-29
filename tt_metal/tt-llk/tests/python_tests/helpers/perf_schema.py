@@ -5,9 +5,12 @@
 
 class PerfSchemaError(AssertionError):
     """
-    Raised when a perf report accumulates more than one column schema in a
-    single CSV (ragged, NaN-filled rows that break strict-JSON dashboards and
-    the compare feature). Fail-loud so the contaminated CSV never ships.
+    Raised when a perf report's columns are not a valid, unique schema.
+
+    Two failure modes share this error: a single CSV that accumulates more than
+    one column schema (ragged, NaN-filled rows), and a report with two columns
+    that carry the same header name (a duplicate that would be silently mangled
+    into a ``<name>.1`` phantom). Both are fail-loud so the bad CSV never ships.
     """
 
 
@@ -63,6 +66,26 @@ def cycles_of(base: str) -> str:
     return f"{base}.cycles"
 
 
+def find_duplicate_columns(columns) -> list:
+    seen, dupes = set(), []
+    for c in columns:
+        if c in seen and c not in dupes:
+            dupes.append(c)
+        seen.add(c)
+    return dupes
+
+
+def assert_unique_columns(columns, context: str = "") -> None:
+    dupes = find_duplicate_columns(columns)
+    if dupes:
+        raise PerfSchemaError(
+            f"Perf report has duplicate column header(s) {dupes} in "
+            f"{context or 'report'}. Two parameters resolve to the same column "
+            f"name (they share a dataclass field name), or the same parameter "
+            f"was passed twice. Rename one field so every header is unique."
+        )
+
+
 # Golden CSV-header catalog
 #
 # This catalog is HAND-MAINTAINED on purpose: a header changes ONLY when someone
@@ -116,6 +139,7 @@ GOLDEN_SWEEP_PARAMS = frozenset(
         "approx_mode",
         "bcast_dim",
         "beta_bits",
+        "binop_mathop",
         "block_ct_dim",
         "block_rt_dim",
         "broadcast_type",
@@ -155,6 +179,7 @@ GOLDEN_SWEEP_PARAMS = frozenset(
         "input_num_blocks",
         "input_num_tiles_in_block",
         "input_tile_cnt",
+        "int_op",
         "is_max_op",
         "is_reduce_to_one",
         "iterations",
@@ -203,6 +228,8 @@ GOLDEN_SWEEP_PARAMS = frozenset(
         "srca_reuse_count",
         "stable_sort",
         "stochastic_rounding",
+        "ternary_mathop",
+        "ternary_scalar_bits",
         "throttle_level",
         "tile_cnt",
         "tile_index",
@@ -224,3 +251,24 @@ GOLDEN_SWEEP_PARAMS = frozenset(
         "victim_num_faces",
     }
 )
+
+
+# Old->new header aliases
+#
+# Bridge a header rename so the compare feature can still line up a baseline CSV
+# written by OLDER code against a report written by CURRENT code: on read, a
+# stale ``old`` column is renamed to its current ``new`` name before the join.
+#
+#
+# NOTE — the 2026 disambiguation renames (op→int_op, mathop→ternary_mathop /
+# binop_mathop, value_bits→ternary_scalar_bits, tile_cnt→input_tile_cnt /
+# output_tile_cnt) are deliberately NOT listed here: each old name is STILL a
+# live header owned by another class (SFPU_BINARY_OP.op, MATH_OP.mathop,
+# SFPU_UNARY_SCALAR.value_bits, TILE_COUNT.tile_cnt). They are not globally
+# aliasable; bridging them needs per-test scoping (a separate follow-up).
+HEADER_ALIASES: dict = {}
+
+
+def apply_header_aliases(columns) -> list:
+    """Rename any stale header to its current name (identity for unknown names)."""
+    return [HEADER_ALIASES.get(c, c) for c in columns]
