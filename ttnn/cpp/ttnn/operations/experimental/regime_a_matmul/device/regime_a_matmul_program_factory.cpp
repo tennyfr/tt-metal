@@ -1196,7 +1196,7 @@ RegimeAMatmulProgramFactory::cached_program_t RegimeAMatmulProgramFactory::creat
     std::map<std::string, std::string> ddefs_compute;  // diagnostic compute defines
     // Bits 0..7 and bit11 alter kernel behaviour (and produce invalid output) => restricted to
     // unfused/single-output. Bits 8..10 are host-only + correctness-preserving, so they are allowed everywhere.
-    constexpr uint32_t kDiagKernelBits = 0xFFu | 0x800u | 0x100000u;  // bit20 = meet-in-the-middle reduction
+    constexpr uint32_t kDiagKernelBits = 0xFFu | 0x800u | 0x100000u | 0x200000u;  // bit20 = meet-in-the-middle reduction
     if ((diag_mask & kDiagKernelBits) != 0u) {
         TT_FATAL(
             !has_bias && !has_ternary && !has_activation && n_chunks == 1u,

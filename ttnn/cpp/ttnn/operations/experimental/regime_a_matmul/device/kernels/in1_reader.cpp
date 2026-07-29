@@ -90,7 +90,15 @@ void kernel_main() {
         noc_semaphore_wait_min(in1ready, (mbc + 1) * mpeers);
         for (uint32_t s = 0; s < mpeers; ++s) {
             uint32_t sx = get_arg_val<uint32_t>(9 + s * 2), sy = get_arg_val<uint32_t>(10 + s * 2);
+#if !defined(SKIP_IN1_FORWARD)
             noc_async_write(w1, get_noc_addr(sx, sy, w1), in1_blk_bytes);
+#else
+            // TEST-ONLY: drop the M-split in1 forward PAYLOAD. The credit wait above and the validity
+            // increment below are preserved, so the reader/slave handshake and block count are unchanged and
+            // only the NoC copy disappears (slaves then compute on stale L1 - output intentionally invalid).
+            (void)sx;
+            (void)sy;
+#endif
         }
         // Signal EARLY, then flush PER-BLOCK. The early valid-inc releases the slave without waiting on the
         // reader's flush (same-NoC write-before-inc keeps the destination from observing validity before the
