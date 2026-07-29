@@ -98,6 +98,39 @@ void reduce_add_block(uint32_t a_cb, uint32_t b_cb, uint32_t out_cb, uint32_t M_
     }
 }
 
+#if defined(RSCATTER) && defined(RS_DIRECT)
+// Direct-exchange reduce-scatter: sum `nsrc` partials of the SAME chunk, one per source slot in recv_cb, into
+// out_cb. Slot s holds that source's partial at recv_cb tile (s * slot_stride + i).
+//
+// The whole chunk is held in fp32 DST while every partial is accumulated into it, so this costs ONE pack per
+// output tile and TWO inits for the chunk -- where the ring pays a pack and an init per ROUND per tile. The
+// accumulation uses binary_dest_reuse_tiles<ELWADD, DEST_TO_SRCB>, which reads DST[i] back into SRCB, adds the
+// CB tile, and writes the result back to DST[i]. Requires n_tiles <= the fp32 DST limit (4), enforced by the
+// factory's max_chunk <= 4 gate.
+void rsd_reduce_slots(uint32_t recv_cb, uint32_t slot_stride, uint32_t nsrc, uint32_t out_cb, uint32_t n_tiles) {
+    acquire_dst();
+    // seed DST from source slot 0
+    copy_tile_to_dst_init_short(recv_cb);
+    reconfig_data_format_srca(recv_cb);
+    for (uint32_t i = 0; i < n_tiles; ++i) {
+        copy_tile(recv_cb, i, i);
+    }
+    // accumulate the remaining sources in place
+    binary_dest_reuse_tiles_init<EltwiseBinaryType::ELWADD, EltwiseBinaryReuseDestType::DEST_TO_SRCB>(recv_cb);
+    for (uint32_t s = 1; s < nsrc; ++s) {
+        for (uint32_t i = 0; i < n_tiles; ++i) {
+            binary_dest_reuse_tiles<EltwiseBinaryType::ELWADD, EltwiseBinaryReuseDestType::DEST_TO_SRCB>(
+                recv_cb, s * slot_stride + i, i);
+        }
+    }
+    pack_reconfig_data_format(out_cb);
+    for (uint32_t i = 0; i < n_tiles; ++i) {
+        pack_tile(i, out_cb);
+    }
+    release_dst();
+}
+#endif
+
 #ifdef RSCATTER
 // Ring reduce-scatter helpers. rs_copy_chunk: copy n_tiles from in_cb starting at tile in_tile_off -> out_cb,
 // used to SEED the ring with this core's own chunk. No cb push/pop (the caller manages both CBs).
@@ -561,7 +594,35 @@ void kernel_main() {
             cb_push_back(intermediate_cb, out_block_num_tiles);
             PACK((llk_pack_reconfig_l1_acc(0)));
 
-#ifdef RSCATTER
+#if defined(RSCATTER) && defined(RS_DIRECT)
+            // ---- DIRECT-EXCHANGE reduce-scatter. Two steps, no per-round loop:
+            //   1. pack the WHOLE sub-block partial once into cb_send as bf16 (one init, rs_T packs). The writer
+            //      then sends slice q of that image to the core at position q -- so there is no per-peer compute
+            //      cost, unlike a scheme that copies each peer's slice separately.
+            //   2. once all P partials for OUR chunk have landed in cb_recv, reduce them in DST and pack once.
+            {
+                const uint32_t P = rs_P;
+                const uint32_t cbase = rs_T / P;
+                const uint32_t crem = rs_T - cbase * P;
+                const uint32_t max_chunk = cbase + (crem ? 1u : 0u);
+                const uint32_t own = cbase + (rs_ring_pos < crem ? 1u : 0u);  // tiles in MY chunk
+                constexpr uint32_t cb_send_cb = tt::CBIndex::c_4;
+                constexpr uint32_t cb_recv_cb = tt::CBIndex::c_5;
+                cb_wait_front(intermediate_cb, out_block_num_tiles);
+                cb_reserve_back(cb_send_cb, out_block_num_tiles);
+                rs_copy_chunk(intermediate_cb, 0, cb_send_cb, out_block_num_tiles);  // whole partial, one pass
+                cb_push_back(cb_send_cb, out_block_num_tiles);
+                cb_pop_front(intermediate_cb, out_block_num_tiles);
+                // Reduce every source's partial for our chunk. Pop cb_recv BEFORE publishing out_cb: the writer
+                // credits its peers only after consuming out_cb, so this ordering guarantees no peer can start
+                // writing the next sub-block into cb_recv while we are still reading it.
+                cb_wait_front(cb_recv_cb, P * max_chunk);
+                cb_reserve_back(out_cb, max_chunk);
+                rsd_reduce_slots(cb_recv_cb, max_chunk, P, out_cb, own);
+                cb_pop_front(cb_recv_cb, P * max_chunk);
+                cb_push_back(out_cb, max_chunk);
+            }
+#elif defined(RSCATTER)
             // ---- Ring REDUCE-SCATTER. intermediate_cb (FP32, resident) is my matmul partial for the whole
             // sub-block, row-major, partitioned into P=Pk contiguous chunks whose sizes differ by at most one
             // tile (the first rs_T%P chunks take one extra), so any rs_T >= P works. Seed cb_send with MY OWN

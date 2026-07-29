@@ -846,3 +846,49 @@ Kept behind default-off diagnostic bits (both compile out entirely at mask 0): b
 IN1_ONE_PACKET. The shared per-block read sequence was factored into one `issue_block_reads` lambda used by all
 three policies - measured neutral (every mask-0 wall reproduces its pre-refactor value within noise) and 111/111
 correctness tests pass.
+
+### F12. DIRECT-EXCHANGE reduce-scatter (bit26): fixes the serialization, still loses to the chain at Pk=12
+
+F9/S9 showed the ring reduce-scatter loses badly at Pk=12 because it takes Pk-1 SEQUENTIAL rounds, each paying a
+semaphore round-trip plus its own add setup (measured 0.22-0.30 us per round). Direct exchange removes that
+serialization: every core writes its partial for chunk q straight to the core that owns chunk q, all Pk writes
+issued back to back, then ONE wait for all arrivals. The reduce accumulates every incoming partial in fp32 DST
+(binary_dest_reuse_tiles) so it costs one pack per output tile instead of one per round.
+
+Three-way measurement, 2 relaunches with the mask order reversed:
+
+| shape | Pk | ring rounds | chain | ring | direct | ring vs chain | direct vs chain | direct vs ring |
+|---|---|---|---|---|---|---|---|---|
+| 512x6144x4608 | 12 | 198 | 180.11 | 240.40 | 217.48 | +33.5% | +20.7% | **-9.5%** |
+| 512x6144x2304 | 12 | 99 | 110.21 | 131.83 | 121.32 | +19.6% | +10.1% | **-8.0%** |
+| 256x6144x6144 | 6 | 60 | 194.89 | 187.09 | 190.10 | -4.0% | -2.5% | +1.6% |
+| 256x15360x1536 | 6 | 5 | 141.48 | 136.15 | 136.93 | -3.8% | -3.2% | +0.6% |
+| 256x2048x1024 | 4 | 3 | 23.46 | 19.79 | 20.07 | -15.6% | -14.4% | +1.4% |
+
+**The hypothesis was right in direction.** Direct beats the ring by 8-9.5% on exactly the two shapes with the
+most sequential rounds, and is neutral-to-slightly-worse where rounds are already few - the signature of a
+serialization fix. PCC 0.9999-1.0001.
+
+**But it still loses to the chain at Pk=12, and the reason is MESSAGE COUNT, not serialization.**
+
+| per core, per sub-block | chain | direct exchange |
+|---|---|---|
+| payload writes | 1 (whole block) | Pk = 12 |
+| arrival atomics | 1 | 12 |
+| credit atomics | 1 | 12 |
+| **NoC transactions** | **3** | **36** |
+
+On 512x6144x4608 that is 18 x 36 = **648 transactions against 54**. The accounting closes: the serialization
+saving is real (critical-path transfer per sub-block falls from 11 x 32 KB to ~4 KB, about 52 us over the shape)
+but roughly 90 us of per-message issue + remote-atomic cost swamps it, netting the +37 us measured.
+
+**So reduce-scatter's trade at high Pk is fewer serialized BYTES for Pk x more MESSAGES.** With a 32 KB
+sub-block there are not enough bytes on the critical path to pay for 12x the messages, and NO topology change
+fixes that - only cutting messages would. The visible next lever: 24 of the 36 transactions are semaphore
+atomics carrying identical values to a fixed peer set, so they are multicastable (36 -> ~14). Payloads are not
+multicastable (different data per destination). That would likely close about half the remaining gap on
+512x6144x2304 and probably not all of it on 512x6144x4608.
+
+No production change - the gate still selects the RING, which is better on all 14 adopted shapes. bit26 is
+default-off. Also stopped allocating the chain's cb7 running-sum CB when reduce-scatter is active (it is never
+touched there). 111/111 correctness tests pass.

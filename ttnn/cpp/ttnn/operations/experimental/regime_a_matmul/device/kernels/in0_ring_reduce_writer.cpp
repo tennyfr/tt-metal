@@ -344,7 +344,89 @@ void kernel_main() {
         return;
     }
 
-#if defined(RSCATTER)
+#if defined(RSCATTER) && defined(RS_DIRECT)
+    // ---- Pk > 1: DIRECT-EXCHANGE REDUCE-SCATTER (all-to-all within the group of Pk k-slice cores). ----
+    // The ring variant below needs Pk-1 SEQUENTIAL rounds, each paying a semaphore round-trip. Here every core
+    // issues all Pk partial-writes back to back and then waits ONCE for all Pk arrivals, so the Pk-1 sequential
+    // sync steps collapse to 1. Total bytes and total adds are identical to the ring; only serialization goes.
+    //
+    // Layout: compute leaves a bf16 image of this core's WHOLE sub-block partial in cb_send. Slice q of that
+    // image (chunk q) belongs to the core at position q, so we write it into that core's cb_recv slot indexed by
+    // OUR position -- distinct slot per source, so a single arrival counter is unambiguous (no fungibility
+    // problem). The loop includes ourselves, so the loopback write fills our own slot and the reduce sees Pk
+    // uniform partials with no special case.
+    //
+    // Flow control: each core credits every group member once after consuming a sub-block, so a sender waits for
+    // nb*Pk credits before writing sub-block nb. Each member sends exactly one credit per sub-block and there
+    // are Pk of them, so nb*Pk total credits implies every member has finished sub-block nb-1 (max per member is
+    // nb, total is nb*Pk over Pk members => each is exactly nb).
+    const uint32_t P = rs_P;
+    constexpr uint32_t cb_send = 4;
+    constexpr uint32_t cb_recv = 5;
+    const uint32_t rs_base_tiles = rs_T / P;
+    const uint32_t rs_rem = rs_T - rs_base_tiles * P;
+    const uint32_t max_chunk = rs_base_tiles + (rs_rem ? 1u : 0u);
+    const uint32_t max_chunk_bytes = max_chunk * tile_bytes;
+    auto csize = [=](uint32_t c) { return rs_base_tiles + (c < rs_rem ? 1u : 0u); };
+    auto coff = [=](uint32_t c) { return c * rs_base_tiles + (c < rs_rem ? c : rs_rem); };
+    const uint32_t my_pos = rs_owned_chunk;             // direct mode: position == owned chunk index
+    const uint32_t recv_base = get_write_ptr(cb_recv);  // identical offset on every core (same CB config)
+    const uint32_t arrive_addr = get_semaphore(red_sem_id);
+    volatile tt_l1_ptr uint32_t* arrive_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(arrive_addr);
+    const uint32_t credit_addr = get_semaphore(redfree_sem_id);
+    volatile tt_l1_ptr uint32_t* credit_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(credit_addr);
+    const uint32_t own_tiles = csize(my_pos);
+
+    for (uint32_t nb = 0; nb < N_bpc; ++nb) {
+        const uint32_t n_base = nb * N_block;
+        // Wait until every group member has drained its receive buffer for the previous sub-block.
+        if (nb) {
+            noc_semaphore_wait_min(credit_ptr, nb * P);
+        }
+        cb_reserve_back(cb_recv, P * max_chunk);  // claim the receive slots BEFORE any peer writes into them
+        cb_wait_front(cb_send, rs_T);             // compute staged the bf16 image of our whole partial
+        const uint32_t img = get_read_ptr(cb_send);
+        // Scatter: slice q -> the core at position q, into OUR slot there.
+        for (uint32_t q = 0; q < P; ++q) {
+            const uint32_t px = get_arg_val<uint32_t>(24 + q * 2), py = get_arg_val<uint32_t>(25 + q * 2);
+            const uint32_t nbytes = csize(q) * tile_bytes;
+            noc_async_write(
+                img + coff(q) * tile_bytes, get_noc_addr(px, py, recv_base + my_pos * max_chunk_bytes), nbytes);
+        }
+        // Payload THEN readiness to the SAME peer on the SAME NoC (ordered, as in the in0 ring), so no core can
+        // observe an arrival before its data has landed.
+        for (uint32_t q = 0; q < P; ++q) {
+            const uint32_t px = get_arg_val<uint32_t>(24 + q * 2), py = get_arg_val<uint32_t>(25 + q * 2);
+            noc_semaphore_inc(get_noc_addr(px, py, arrive_addr), 1);
+        }
+        noc_async_writes_flushed();  // payloads departed cb_send -> the slot can be refilled by compute
+        cb_pop_front(cb_send, rs_T);
+        // ONE wait for the whole exchange (this is the point of the scheme).
+        noc_semaphore_wait_min(arrive_ptr, (nb + 1) * P);
+        cb_push_back(cb_recv, P * max_chunk);  // compute reduces all P slots -> out_cb
+
+        // Our chunk is now fully reduced: write its tiles to DRAM.
+        cb_wait_front(out_cb, max_chunk);
+        const uint32_t rr = get_read_ptr(out_cb);
+        const uint32_t own_off = coff(my_pos);
+        for (uint32_t j = 0; j < own_tiles; ++j) {
+            const uint32_t idx = own_off + j;
+            const uint32_t m = idx / N_block;
+            const uint32_t n = idx - m * N_block;
+            if (m < valid_m && (n_base + n) < valid_n) {
+                noc_async_write_page((m_start + m) * Nt + (n_start + n_base + n), out, rr + j * tile_bytes);
+            }
+        }
+        noc_async_writes_flushed();
+        cb_pop_front(out_cb, max_chunk);
+        // Receive buffer is free again: credit every group member (including ourselves, keeping the count
+        // uniform at P per sub-block).
+        for (uint32_t q = 0; q < P; ++q) {
+            const uint32_t px = get_arg_val<uint32_t>(24 + q * 2), py = get_arg_val<uint32_t>(25 + q * 2);
+            noc_semaphore_inc(get_noc_addr(px, py, credit_addr), 1);
+        }
+    }
+#elif defined(RSCATTER)
     // ---- Pk > 1: RING REDUCE-SCATTER (one independent reduce-scatter per output SUB-block). ----
     // P = Pk cores in the factory's optimized cyclic order. Each of the N_bpc output sub-blocks (M_block x
     // N_block tiles = rs_T tiles) is tile-partitioned into P contiguous chunks (row-major). The partition does

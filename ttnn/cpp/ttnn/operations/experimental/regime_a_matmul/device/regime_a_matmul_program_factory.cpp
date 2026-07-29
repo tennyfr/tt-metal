@@ -1282,6 +1282,22 @@ RegimeAMatmulProgramFactory::cached_program_t RegimeAMatmulProgramFactory::creat
     const uint32_t rs_max_chunk_gate = (rs_T + Pk - 1u) / Pk;
     const bool rs_deep_ok = (Pk <= 6u) && (rs_max_chunk_gate >= 2u);
     const bool rs_gate = rs_feasible && (Pk >= 4u) && (geo.N_sub >= 2u) && ((Kt_r <= 64u) || rs_deep_ok);
+    // bit26: DIRECT-EXCHANGE reduce-scatter instead of the ring. The ring takes Pk-1 SEQUENTIAL rounds, each
+    // paying a semaphore round-trip and its own add_tiles_init/reconfig -- measured at 0.22-0.30 us per round,
+    // which is what makes Pk=12 lose (198 rounds -> +60 us on 512x6144x4608). Direct exchange issues all Pk
+    // partial-writes back to back and waits ONCE for all arrivals, so the Pk-1 sequential sync steps collapse
+    // to 1, and the reduce accumulates every incoming partial in DST (one pack per output tile instead of
+    // Pk-1). Same total bytes and same total adds as the ring -- this only removes serialization.
+    // Requires max_chunk <= 4: the reduce holds a whole chunk in fp32 DST at once (4-tile limit).
+    const bool diag_rs_direct = (diag_mask & 0x4000000u) != 0u;
+    TT_FATAL(
+        !diag_rs_direct || (rs_feasible && rs_max_chunk_gate <= 4u),
+        "regime_a_matmul diag bit26 (RS_DIRECT) needs a reduce-scatter-feasible shape with max_chunk <= 4 "
+        "(have max_chunk={}, Pk={}, sub-block {} tiles)",
+        rs_max_chunk_gate,
+        Pk,
+        rs_T);
+    const bool rs_direct = diag_rs_direct;
     const bool diag_force_chain = (diag_mask & 0x400000u) != 0u;     // bit22
     const bool diag_force_rscatter = (diag_mask & 0x800000u) != 0u;  // bit23
     TT_FATAL(
@@ -1294,6 +1310,10 @@ RegimeAMatmulProgramFactory::cached_program_t RegimeAMatmulProgramFactory::creat
     if (rscatter) {
         wdefs["RSCATTER"] = "1";
         ddefs_compute["RSCATTER"] = "1";
+        if (rs_direct) {
+            wdefs["RS_DIRECT"] = "1";
+            ddefs_compute["RS_DIRECT"] = "1";
+        }
     }
 
     // ---- M-split worker PLACEMENT (Sm>1): IN1_NEAR. Overrides only P.cores[i].coord; MUST run BEFORE the ring
@@ -1356,7 +1376,19 @@ RegimeAMatmulProgramFactory::cached_program_t RegimeAMatmulProgramFactory::creat
     // SENDER's writer NoC (writer runs opposite the core's in1-reader NoC), which is asymmetric on the torus
     // and therefore cannot be approximated by a coordinate distance. Pk==4 searches all 3! orders exactly;
     // larger Pk uses greedy nearest-neighbour (P! is infeasible). Mutates only the rs_* fields. ----
-    if (rscatter) {
+    if (rscatter && rs_direct) {
+        // DIRECT exchange: no ring, so no ordering to optimize. Position == k-slice index, and the core at
+        // position p owns chunk p and writes its partial for chunk q straight to the core at position q.
+        for (uint32_t b = 0; b < 8u; ++b) {
+            for (uint32_t sub = 0; sub < geo.mfac; ++sub) {
+                for (uint32_t kk = 0; kk < Pk; ++kk) {
+                    auto& cp = P.cores[b * geo.preaders + kk * geo.mfac + sub];
+                    cp.rs_pos = kk;
+                    cp.rs_own_chunk = kk;
+                }
+            }
+        }
+    } else if (rscatter) {
         namespace expdev = tt::tt_metal::experimental::Device;
         for (uint32_t b = 0; b < 8u; ++b) {
             for (uint32_t sub = 0; sub < geo.mfac; ++sub) {
@@ -1477,7 +1509,8 @@ RegimeAMatmulProgramFactory::cached_program_t RegimeAMatmulProgramFactory::creat
     mkcb(program, all_cores, 1, cb.cb1_tiles, tt::DataFormat::Float16_b, kTileBytesBf16);  // in1 (depth 4)
     mkcb(program, all_cores, 2, cb.cb2_tiles, tt::DataFormat::Float16_b, kTileBytesBf16);  // out
     mkcb(program, all_cores, 3, cb.cb3_tiles, tt::DataFormat::Float32, kTileBytesFp32);    // fp32 intermediate
-    if (cb.cb7_tiles > 0u) {
+    if (cb.cb7_tiles > 0u && !rscatter) {
+        // cb7 is the CHAIN's running-sum buffer; reduce-scatter never touches it, so don't spend the L1.
         mkcb(program, all_cores, 7, cb.cb7_tiles, tt::DataFormat::Float16_b, kTileBytesBf16);  // reduce (Pk>1)
     }
     // Fused-epilogue operand CBs (only when the matching fusion is active). c_4 bias [1,N_sub], c_5 residual
@@ -1500,7 +1533,14 @@ RegimeAMatmulProgramFactory::cached_program_t RegimeAMatmulProgramFactory::creat
     // global epoch mod 2 and every CB operation moves a whole max-size slot, so the FIFO period and the remote
     // write stride are the same value by construction.
     const uint32_t rs_max_chunk = rscatter ? ((out_blk_tiles + Pk - 1u) / Pk) : 0u;
-    if (rscatter) {
+    if (rscatter && rs_direct) {
+        // c_4 = bf16 image of this core's WHOLE sub-block partial (2 deep, so compute can build the next one
+        //       while the writer is still scattering the current one); the writer sends slice q of it to peer q.
+        // c_5 = Pk receive slots, one per source position (including a loopback slot for this core itself, so
+        //       every slot is a uniform partial and the reduce has no special case).
+        mkcb(program, all_cores, 4, 2u * out_blk_tiles, tt::DataFormat::Float16_b, kTileBytesBf16);
+        mkcb(program, all_cores, 5, Pk * rs_max_chunk, tt::DataFormat::Float16_b, kTileBytesBf16);
+    } else if (rscatter) {
         mkcb(program, all_cores, 4, 2u * rs_max_chunk, tt::DataFormat::Float16_b, kTileBytesBf16);
         mkcb(program, all_cores, 5, 2u * rs_max_chunk, tt::DataFormat::Float16_b, kTileBytesBf16);
     }
@@ -1803,6 +1843,18 @@ RegimeAMatmulProgramFactory::cached_program_t RegimeAMatmulProgramFactory::creat
             wa.push_back(cp.rs_own_chunk);  // 21 tile-chunk index this core owns + writes
             wa.push_back(Pk);               // 22 cycle size
             wa.push_back(rs_T);             // 23 sub-block tiles (kernel derives the chunk sizes)
+            if (rs_direct) {
+                // 24+: coords of ALL Pk group members in position order, INCLUDING this core itself. The
+                // writer loops over every position and writes slice q to member q, so the loopback write
+                // fills its own receive slot and every slot the reduce reads is a uniform partial.
+                const uint32_t bnk = i / geo.preaders;
+                const uint32_t sub = (i % geo.preaders) % geo.mfac;
+                for (uint32_t kk = 0; kk < Pk; ++kk) {
+                    const auto pc = phys(bnk * geo.preaders + kk * geo.mfac + sub);
+                    wa.push_back(pc.x);
+                    wa.push_back(pc.y);
+                }
+            }
         }
         SetRuntimeArgs(program, wh, cores[i], wa);
 
