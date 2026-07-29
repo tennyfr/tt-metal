@@ -317,6 +317,15 @@ plan::PlanResult make_and_build_plan(
     if (cb1_depth) {
         in.cb1_depth = cb1_depth;
     }
+    // diag bits 18-19 select the reduction-CB depth: 0 -> 2 (production), 1 -> 4, 2 -> 8.
+    if (const char* e = std::getenv("TT_REGIME_A_DIAG_MASK")) {
+        const long sel = (std::strtol(e, nullptr, 10) >> 18) & 0x3L;
+        if (sel == 1L) {
+            in.cb7_depth = 4u;
+        } else if (sel == 2L) {
+            in.cb7_depth = 8u;
+        }
+    }
 
     return plan::build_plan(in);
 }

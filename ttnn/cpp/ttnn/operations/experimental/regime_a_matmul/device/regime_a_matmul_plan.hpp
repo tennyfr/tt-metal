@@ -100,6 +100,12 @@ struct PlanInputs {
     // cb1's size and therefore the L1 total, so a too-large depth is rejected by the L1 budget check below —
     // which is the intended, explicit failure mode rather than a silent clamp.
     uint32_t cb1_depth{4};
+
+    // Depth of the split-K reduction CB (cb7) in BLOCKS. Production is 2 (double-buffered). A deeper buffer
+    // lets a band forward sub-block nb+1 while nb is still being consumed downstream, so the chain pipelines
+    // further across sub-blocks. TEST-ONLY sweep knob; the kernel derives the slot modulus from the same
+    // value (it is passed as the `use_reduce` compile arg), so the two can never disagree.
+    uint32_t cb7_depth{2};
 };
 
 // ------------------------------------------------------------------------------------------------
@@ -314,7 +320,8 @@ inline PlanResult build_plan(const PlanInputs& in) {
     cb.cb1_tiles = (in.cb1_depth ? in.cb1_depth : 4u) * kb * g.N_sub;
     cb.cb2_tiles = 2u * g.M_block_capacity * g.N_sub;
     cb.cb3_tiles = g.M_block_capacity * g.N_sub;
-    cb.cb7_tiles = (Pk > 1u) ? (2u * g.M_block_capacity * g.N_sub) : 0u;
+    const uint32_t cb7_depth = in.cb7_depth ? in.cb7_depth : 2u;
+    cb.cb7_tiles = (Pk > 1u) ? (cb7_depth * g.M_block_capacity * g.N_sub) : 0u;
     cb.l1_bytes = (cb.cb0_tiles + cb.cb1_tiles + cb.cb2_tiles + cb.cb7_tiles) * in.tb + cb.cb3_tiles * in.tf;
     if (cb.l1_bytes > in.l1_budget_bytes) {
         res.error = "L1 over budget: needs " + std::to_string(cb.l1_bytes) + " B > " +
