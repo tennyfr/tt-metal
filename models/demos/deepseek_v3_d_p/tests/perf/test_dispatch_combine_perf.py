@@ -39,10 +39,48 @@ _REAL_INDICES_TOPOS = [("linear", 2), ("ring", 2)]
 
 _DS_CHUNK_PICKS = [(19, 2), (29, 0), (42, 3), (24, 1)]  # 37.2 / 37.0 / 36.9 / 36.7 % in-col share
 _KIMI_CHUNK_PICKS = [(45, 2), (48, 0), (44, 1), (50, 1)]  # 38.6 / 38.1 / 37.4 / 37.1 %
-_DISPATCH_DS_CHUNK_EXPECTED_NS: dict[tuple[str, int, int, int], int] = {}
-_COMBINE_DS_CHUNK_EXPECTED_NS: dict[tuple[str, int, int, int], int] = {}
-_DISPATCH_KIMI_CHUNK_EXPECTED_NS: dict[tuple[str, int, int, int], int] = {}
-_COMBINE_KIMI_CHUNK_EXPECTED_NS: dict[tuple[str, int, int, int], int] = {}
+# Baselines are medians over 5 tracy runs on LB 8x1 (bh-lb-17, AICLK 800 MHz). Key is
+# (topo, nlinks, layer, col). Per-case run-to-run spread was <1.3%.
+_DISPATCH_DS_CHUNK_EXPECTED_NS: dict[tuple[str, int, int, int], int] = {
+    ("linear", 2, 19, 2): 1533332,
+    ("linear", 2, 29, 0): 1926464,
+    ("linear", 2, 42, 3): 1552909,
+    ("linear", 2, 24, 1): 1308836,
+    ("ring", 2, 19, 2): 1042299,
+    ("ring", 2, 29, 0): 1071193,
+    ("ring", 2, 42, 3): 881885,
+    ("ring", 2, 24, 1): 819476,
+}
+_COMBINE_DS_CHUNK_EXPECTED_NS: dict[tuple[str, int, int, int], int] = {
+    ("linear", 2, 19, 2): 1749833,
+    ("linear", 2, 29, 0): 1874665,
+    ("linear", 2, 42, 3): 1376552,
+    ("linear", 2, 24, 1): 1318127,
+    ("ring", 2, 19, 2): 1412458,
+    ("ring", 2, 29, 0): 1377090,
+    ("ring", 2, 42, 3): 1042437,
+    ("ring", 2, 24, 1): 1030253,
+}
+_DISPATCH_KIMI_CHUNK_EXPECTED_NS: dict[tuple[str, int, int, int], int] = {
+    ("linear", 2, 45, 2): 1443912,
+    ("linear", 2, 48, 0): 1962610,
+    ("linear", 2, 44, 1): 1494259,
+    ("linear", 2, 50, 1): 1461172,
+    ("ring", 2, 45, 2): 1017684,
+    ("ring", 2, 48, 0): 1012791,
+    ("ring", 2, 44, 1): 1374257,
+    ("ring", 2, 50, 1): 1038540,
+}
+_COMBINE_KIMI_CHUNK_EXPECTED_NS: dict[tuple[str, int, int, int], int] = {
+    ("linear", 2, 45, 2): 1489780,
+    ("linear", 2, 48, 0): 1673044,
+    ("linear", 2, 44, 1): 1795140,
+    ("linear", 2, 50, 1): 1410634,
+    ("ring", 2, 45, 2): 1213800,
+    ("ring", 2, 48, 0): 1238818,
+    ("ring", 2, 44, 1): 1600527,
+    ("ring", 2, 50, 1): 1166319,
+}
 
 # model -> (picks, dispatch baselines, combine baselines). The model name is also the worker's
 # parametrize id (perf_captured_<model>_chunk) and its namespace in the capture file.
