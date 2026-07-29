@@ -1,0 +1,25 @@
+name: "TRIAL debug WAF path scope (do not merge)"
+
+# Trial-only. Tests whether hitting /v1/chat/completions instead of
+# /chat/completions bypasses the gateway WAF. Push-triggered. Delete with branch.
+on:
+  push:
+    branches: ["ppetrovic/trial-ai-summary-sanity"]
+    paths: [".github/workflows/debug-waf.yaml", ".github/debug/**"]
+
+jobs:
+  probe:
+    runs-on: tt-ubuntu-2204-N300-viommu-stable
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        timeout-minutes: 20
+      - uses: astral-sh/setup-uv@v5
+      - name: Probe /chat/completions vs /v1/chat/completions
+        env:
+          TT_CHAT_API_KEY: ${{ secrets.TT_CHAT_API_KEY }}
+          TT_CHAT_URL: ${{ secrets.TT_CHAT_URL }}
+          AI_SUMMARY_MODEL: ${{ vars.AI_SUMMARY_MODEL }}
+        run: |
+          uv venv --quiet /tmp/waf
+          uv pip install --python /tmp/waf/bin/python --quiet openai
+          /tmp/waf/bin/python .github/debug/waf_probe.py
