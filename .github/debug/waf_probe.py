@@ -1,9 +1,8 @@
 """One-off probe (push-triggered, not wired into any pipeline).
 
-Tests whether the gateway WAF is scoped to the '/chat/completions' path: sends a
-known-403 payload ('../') to both base_url + '/chat/completions' (what the client
-does today) and base_url + '/v1/chat/completions'. If '/v1' returns 200 while the
-bare path 403s, switching the endpoint bypasses the WAF wholesale.
+Re-checks the WAF on bare '/chat/completions' vs '/v1/chat/completions' from a CI
+runner, using the real 96 KB sim prompt plus smaller slices — to tell whether the
+'/v1' 403 on big payloads is a content rule or a size limit.
 """
 
 import os
@@ -13,15 +12,15 @@ from openai import OpenAI, OpenAIError
 
 base = os.environ["TT_CHAT_URL"].rstrip("/")
 key = os.environ["TT_CHAT_API_KEY"]
-model = os.environ.get("AI_SUMMARY_MODEL") or os.environ.get("TT_CHAT_MODEL") or "gpt-4o"
+model = os.environ.get("AI_SUMMARY_MODEL") or os.environ.get("TT_CHAT_MODEL") or "anthropic/claude-sonnet-4-6"
 
-clients = {
-    "bare  (.../chat/completions)": OpenAI(api_key=key, base_url=base),
-    "v1    (.../v1/chat/completions)": OpenAI(api_key=key, base_url=base + "/v1"),
-}
+sim = open(os.path.join(os.path.dirname(__file__), "sim_prompt.txt")).read()
 payloads = {
     "hello": "hello",
-    "waf_trigger_../": "../opt/venv/lib/python3.10/site-packages/pydantic/_internal/_config.py:291",
+    "dotdot": "../opt/venv/lib/python3.10/site-packages/pydantic/_internal/_config.py:291",
+    "sim_16k": sim[:16000],
+    "sim_48k": sim[:48000],
+    f"sim_full_{len(sim)//1024}k": sim,
 }
 
 
@@ -35,7 +34,9 @@ def status(client, content):
         return f"FAIL {getattr(e, 'status_code', '?')}"
 
 
-for cname, client in clients.items():
+for route in ["", "/v1"]:
+    c = OpenAI(api_key=key, base_url=base + route)
+    label = route or "bare"
     for pname, content in payloads.items():
-        print(f"{cname:34s} | {pname:16s} -> {status(client, content)}")
+        print(f"{label:5s} | {pname:12s} ({len(content):6d} ch) -> {status(c, content)}")
         sys.stdout.flush()

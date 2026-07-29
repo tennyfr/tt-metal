@@ -1,0 +1,670 @@
+You are a CI failure analyst. Analyze the following CI log and provide a structured summary.
+
+## KNOWN FAILURE CATEGORIES
+  - runtime:exception: Unhandled Python exception in any component — LLM determines actual layer and category (patterns: Traceback (most recent call last), AssertionError, RuntimeError)
+  - infra:machine: Physical machine or runner issues (patterns: runner crash, disk full, No space left on device, OOM, Out of memory)
+  - infra:ci: CI/CD pipeline issues (patterns: workflow failed, job dispatch, artifact download, docker pull, image not found)
+  - infra:network: Network connectivity issues (patterns: connection refused, connection timed out, network unreachable, DNS, SSL)
+  - hw:device: Device detection/initialization issues (patterns: tt-smi, device not found, No chips detected, chip not detected, ttSiliconDevice)
+  - hw:umd: UMD (User Mode Driver) issues (patterns: umd, UMD, tt_device, pcie, PCIE)
+  - hw:fabric: Ethernet/fabric link issues (patterns: eth link, ethernet, link training, fabric init)
+  - tt-metal:trace: Trace buffer allocation failures (patterns: trace buffers of size, allocated for trace region, trace_region_size, mesh_trace.cpp)
+  - tt-metal:device: Device detection/initialization failures (patterns: No chips detected, tt_cluster.cpp, device initialization, physical_device_id, MeshDevice)
+  - tt-metal:dispatch: Command dispatch/queue issues (patterns: dispatch timeout, CommandQueue, DISPATCH_TIMEOUT, EnqueueProgram, command_queue)
+  - tt-metal:memory: Device memory allocation issues (patterns: allocation failed, buffer allocation, out of memory, DRAM, L1)
+  - tt-metal:compile: Kernel compilation issues (patterns: TT_THROW, TT_FATAL, compile error, kernel compilation, not declared in this scope)
+  - tt-metal:fabric: Multi-chip fabric/mesh issues (patterns: fabric, ethernet, mesh timeout, chip-to-chip)
+  - vllm:engine: vLLM engine initialization/runtime errors (patterns: EngineCore, AsyncLLMEngine, LLMEngine, engine.py, run_mp_engine)
+  - vllm:worker: vLLM worker process errors (patterns: WorkerProc, worker, multiprocessing, Error in worker)
+  - vllm:config: vLLM configuration errors (patterns: max_model_len, max_num_seqs, block_size, scheduler, override_tt_config)
+  - vllm:connection: vLLM server connection errors (patterns: ConnectionError, HTTPConnectionPool, Max retries exceeded, port 8000, connection refused)
+  - app:cli: CLI argument/startup errors (patterns: error: unrecognized arguments, error: invalid choice, error: the following arguments are required, argparse, usage:)
+  - app:server: Inference server startup/runtime errors (patterns: inference-server, server startup, server failed, [SERVER])
+  - app:api: API/endpoint errors (patterns: HTTP, endpoint, request failed, API error)
+  - app:cache: Model cache generation issues (patterns: Cache generation, cache timeout, cache failed)
+  - ttnn:op: TTNN operator errors (patterns: ttnn::, operation failed, op constraint)
+  - ttnn:shape: Tensor shape/layout errors (patterns: shape mismatch, dimension, layout)
+  - model:load: Model loading errors (patterns: model load, checkpoint, from_pretrained, safetensors)
+  - model:accuracy: Model accuracy/correctness errors (patterns: PCC, accuracy, mismatch, AllClose)
+
+If the failure doesn't match any known category, output category as "UNKNOWN" and provide the unknown_pattern field with the error pattern you found.
+
+## STACK LAYERS (from low to high)
+  - framework: TT-Metal framework layer (paths: /tt_metal/, /ttnn/cpp/, mesh_trace.cpp)
+  - operations: TTNN operations layer (paths: /ttnn/operations/, op_library)
+  - model: Model implementations (paths: /models/, /tt-train/)
+  - serving: vLLM serving layer (paths: /vllm/, site-packages/vllm, engine.py)
+  - application: Application layer (paths: /tt-inference-server/, [SERVER], inference)
+
+## CONTEXT
+
+
+
+
+## EXTRACTED LOG
+============================================================
+JOB CONTEXT
+============================================================
+(no job context found)
+
+============================================================
+ERROR SECTIONS (26 found)
+============================================================
+
+--- Error Section 1 ---
+916: [gw3] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_nd_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[6, 8, 5]-shard_shape=[2, 8, 5]-grid={[0-0 - 2-0]}]
+917: tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_nd_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[5, 16, 7]-shard_shape=[2, 16, 7]-grid={[0-0 - 2-0]}]
+918: [gw3] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_nd_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[5, 16, 7]-shard_shape=[2, 16, 7]-grid={[0-0 - 2-0]}]
+919: tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_nd_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[3, 5, 50, 55]-shard_shape=[2, 3, 16, 10]-grid={[0-0 - 3-0], [0-1 - 3-1]}]
+920: [gw0] node down: Not properly terminated
+921: [gw0] FAILED tests/ttnn/unit_tests/base_functionality/test_concat_issue.py::test_5d_concat_tile[layout=Layout.TILE]
+922: 
+923: replacing crashed worker gw0
+924: [gw3] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_nd_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[3, 5, 50, 55]-shard_shape=[2, 3, 16, 10]-grid={[0-0 - 3-0], [0-1 - 3-1]}]
+925: tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_nd_sharded_to_interleaved[output_buffer_type=BufferType.L1-shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[1, 32, 64]-shard_shape=[1, 32, 64]-grid={[0-0 - 0-0]}]
+926: [gw3] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_nd_sharded_to_interleaved[output_buffer_type=BufferType.L1-shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[1, 32, 64]-shard_shape=[1, 32, 64]-grid={[0-0 - 0-0]}]
+927: tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_nd_sharded_to_interleaved[output_buffer_type=BufferType.L1-shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[6, 32, 64]-shard_shape=[2, 32, 64]-grid={[0-0 - 2-0]}]
+928: [gw3] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_nd_sharded_to_interleaved[output_buffer_type=BufferType.L1-shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[6, 32, 64]-shard_shape=[2, 32, 64]-grid={[0-0 - 2-0]}]
+
+--- Error Section 2 ---
+1311: [gw4] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_2D[start_with_padding=False-to_layout=Layout.ROW_MAJOR-from_layout=Layout.TILE-on_device=True-width=32-height=32]
+1312: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_2D[start_with_padding=False-to_layout=Layout.ROW_MAJOR-from_layout=Layout.TILE-on_device=True-width=32-height=30]
+1313: [gw3] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_legacy_2d_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[1, 1, 128, 128]-input_shard_layout=TensorMemoryLayout.BLOCK_SHARDED-input_shard_shape=(64, 64)-input_grid={[0-0 - 1-1]}]
+1314: tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_legacy_2d_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[1, 1, 100, 100]-input_shard_layout=TensorMemoryLayout.BLOCK_SHARDED-input_shard_shape=(64, 64)-input_grid={[0-0 - 1-1]}]
+1315: [gw1] node down: Not properly terminated
+1316: [gw1] FAILED tests/ttnn/unit_tests/base_functionality/test_expand.py::test_expand[dtype=DataType.BFLOAT16-tensor_layout=Layout.TILE-input_shape=(4, 1)-output_shape=(4, 2)]
+1317: 
+1318: replacing crashed worker gw1
+1319: [gw3] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_legacy_2d_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[1, 1, 100, 100]-input_shard_layout=TensorMemoryLayout.BLOCK_SHARDED-input_shard_shape=(64, 64)-input_grid={[0-0 - 1-1]}]
+1320: tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_legacy_2d_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[1, 1, 128, 64]-input_shard_layout=TensorMemoryLayout.HEIGHT_SHARDED-input_shard_shape=(32, 64)-input_grid={[0-0 - 3-0]}]
+1321: [gw3] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_legacy_2d_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[1, 1, 128, 64]-input_shard_layout=TensorMemoryLayout.HEIGHT_SHARDED-input_shard_shape=(32, 64)-input_grid={[0-0 - 3-0]}]
+1322: tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_legacy_2d_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[1, 1, 100, 64]-input_shard_layout=TensorMemoryLayout.HEIGHT_SHARDED-input_shard_shape=(32, 64)-input_grid={[0-0 - 3-0]}]
+1323: [gw3] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_legacy_2d_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[1, 1, 100, 64]-input_shard_layout=TensorMemoryLayout.HEIGHT_SHARDED-input_shard_shape=(32, 64)-input_grid={[0-0 - 3-0]}]
+
+--- Error Section 3 ---
+1327: [gw3] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_legacy_2d_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[1, 1, 64, 100]-input_shard_layout=TensorMemoryLayout.WIDTH_SHARDED-input_shard_shape=(64, 32)-input_grid={[0-0 - 3-0]}]
+1328: tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_legacy_2d_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[1, 1, 64, 100]-input_shard_layout=TensorMemoryLayout.WIDTH_SHARDED-input_shard_shape=(64, 21)-input_grid={[0-0 - 4-0]}]
+1329: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_narrow.py::test_narrow_regression[input_shape=(14336, 7168)-dim=0-start=0-length=96-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::DRAM,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-layout=Layout.TILE-dtype=DataType.BFLOAT8_B]
+1330: tests/ttnn/unit_tests/base_functionality/test_pre_and_post_operation_hook.py::test_pre_and_post_operation_hooks_for_printing[dim=-1-w=32-h=32-batch_size=1]
+1331: [gw4] node down: Not properly terminated
+1332: [gw4] FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_2D[start_with_padding=False-to_layout=Layout.ROW_MAJOR-from_layout=Layout.TILE-on_device=True-width=32-height=30]
+1333: 
+1334: replacing crashed worker gw4
+1335: [gw2] SKIPPED tests/ttnn/unit_tests/base_functionality/test_pre_and_post_operation_hook.py::test_pre_and_post_operation_hooks_for_printing[dim=-1-w=32-h=32-batch_size=1]
+1336: tests/ttnn/unit_tests/base_functionality/test_pre_and_post_operation_hook.py::test_pre_operaiton_hook_for_storing_input_activations[dim=-1-w=32-h=32-batch_size=1]
+1337: [gw3] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_legacy_2d_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[1, 1, 64, 100]-input_shard_layout=TensorMemoryLayout.WIDTH_SHARDED-input_shard_shape=(64, 21)-input_grid={[0-0 - 4-0]}]
+1338: tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_rm_legacy_2d_sharded_to_interleaved[output_buffer_type=BufferType.DRAM-shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[1, 1, 128, 128]-input_shard_layout=TensorMemoryLayout.BLOCK_SHARDED-input_shard_shape=(64, 64)-input_grid={[0-0 - 1-1]}]
+1339: [gw2] SKIPPED tests/ttnn/unit_tests/base_functionality/test_pre_and_post_operation_hook.py::test_pre_operaiton_hook_for_storing_input_activations[dim=-1-w=32-h=32-batch_size=1]
+
+--- Error Section 4 ---
+6070: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 128, 160]-shard_shape=[1, 32, 160]-layout=Layout.TILE]
+6071: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 128, 160]-shard_shape=[1, 32, 32]-layout=Layout.TILE]
+6072: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_multiple_dims[input_shape=(3, 1, 1, 1, 1280)-dims=[1, 2, 3]-layout=Layout.TILE]
+6073: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 128, 160]-shard_shape=[1, 32, 32]-layout=Layout.TILE]
+6074: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[30, 40, 55]-shard_shape=[30, 40, 10]-layout=Layout.ROW_MAJOR]
+6075: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[4]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+6076: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[4]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+6077: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[4]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+6078: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[30, 40, 55]-shard_shape=[30, 40, 10]-layout=Layout.ROW_MAJOR]
+6079: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[30, 45, 50]-shard_shape=[30, 10, 50]-layout=Layout.ROW_MAJOR0]
+6080: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[30, 45, 50]-shard_shape=[30, 10, 50]-layout=Layout.ROW_MAJOR0]
+6081: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[35, 40, 50]-shard_shape=[10, 40, 50]-layout=Layout.ROW_MAJOR0]
+6082: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[35, 40, 50]-shard_shape=[10, 40, 50]-layout=Layout.ROW_MAJOR0]
+6083: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[4]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+6084: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[30, 45, 50]-shard_shape=[30, 10, 50]-layout=Layout.ROW_MAJOR1]
+6085: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[-5]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+6086: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[30, 45, 50]-shard_shape=[30, 10, 50]-layout=Layout.ROW_MAJOR1]
+6087: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[35, 40, 50]-shard_shape=[10, 40, 50]-layout=Layout.ROW_MAJOR1]
+6088: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[35, 40, 50]-shard_shape=[10, 40, 50]-layout=Layout.ROW_MAJOR1]
+6089: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[35, 45, 50]-shard_shape=[10, 10, 50]-layout=Layout.ROW_MAJOR]
+6090: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[-5]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+6091: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[35, 45, 50]-shard_shape=[10, 10, 50]-layout=Layout.ROW_MAJOR]
+6092: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[35, 45, 55]-shard_shape=[10, 10, 10]-layout=Layout.ROW_MAJOR]
+6093: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[-5]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+6094: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[-5]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+6095: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, 0]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+6096: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[35, 45, 55]-shard_shape=[10, 10, 10]-layout=Layout.ROW_MAJOR]
+6097: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 128, 165]-shard_shape=[3, 128, 32]-layout=Layout.TILE]
+6098: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, 0]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+6099: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, 0]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+6100: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 128, 165]-shard_shape=[3, 128, 32]-layout=Layout.TILE]
+6101: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 130, 160]-shard_shape=[3, 32, 160]-layout=Layout.TILE]
+6102: [gw5] PASSED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize[W=256-H=32-C=1-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B]
+6103: tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize[W=256-H=32-C=1-N=3-use_multicore=False-in_dtype=DataType.BFLOAT8_B]
+6104: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, 0]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+6105: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, -4]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+6106: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 130, 160]-shard_shape=[3, 32, 160]-layout=Layout.TILE]
+6107: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[5, 128, 160]-shard_shape=[2, 128, 160]-layout=Layout.TILE]
+6108: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[5, 128, 160]-shard_shape=[2, 128, 160]-layout=Layout.TILE]
+6109: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 130, 165]-shard_shape=[3, 32, 32]-layout=Layout.TILE]
+6110: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 130, 165]-shard_shape=[3, 32, 32]-layout=Layout.TILE]
+
+--- Error Section 5 ---
+6129: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 4, 5]-shard_shape=[1, 1, 5]-layout=Layout.ROW_MAJOR]
+6130: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 4, 5]-shard_shape=[1, 1, 5]-layout=Layout.ROW_MAJOR]
+6131: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 4, 5]-shard_shape=[1, 1, 1]-layout=Layout.ROW_MAJOR]
+6132: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 4, 5]-shard_shape=[1, 1, 1]-layout=Layout.ROW_MAJOR]
+6133: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 128, 160]-shard_shape=[3, 128, 160]-layout=Layout.TILE]
+6134: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, -4]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+6135: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 128, 160]-shard_shape=[3, 128, 160]-layout=Layout.TILE]
+6136: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 128, 160]-shard_shape=[3, 128, 32]-layout=Layout.TILE]
+6137: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, -4]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+6138: [gw6] PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 128, 160]-shard_shape=[3, 128, 32]-layout=Layout.TILE]
+6139: tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 128, 160]-shard_shape=[3, 32, 160]-layout=Layout.TILE]
+
+--- Error Section 6 ---
+8470: [gw6] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_width_sharded[shard_scheme=TensorMemoryLayout.WIDTH_SHARDED-shape=[1, 2, 96, 128]-layout=Layout.TILE-dtype=DataType.UINT32]
+8471: tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_width_sharded[shard_scheme=TensorMemoryLayout.WIDTH_SHARDED-shape=[1, 2, 96, 128]-layout=Layout.TILE-dtype=DataType.BFLOAT16]
+8472: [gw3] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_tilized_interleaved_to_nd_sharded_dtype_conversion[shard_orientation=ShardOrientation.ROW_MAJOR-input_dtype=DataType.BFLOAT16-output_dtype=DataType.FLOAT32-pcc=0.9999-tensor_shape=[6, 32, 64]-shard_shape=[2, 32, 64]-grid={[0-0 - 2-0]}]
+8473: tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_tilized_interleaved_to_nd_sharded_dtype_conversion[shard_orientation=ShardOrientation.ROW_MAJOR-input_dtype=DataType.BFLOAT16-output_dtype=DataType.FLOAT32-pcc=0.9999-tensor_shape=[4, 1, 32, 64]-shard_shape=[1, 1, 32, 64]-grid={[0-0 - 3-0]}]
+8474: [gw5] node down: Not properly terminated
+8475: [gw5] FAILED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=10-W=32-H=128-C=1-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B]
+8476: 
+8477: replacing crashed worker gw5
+8478: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_2D[W=1024-H=512-use_multicore=False-in_dtype=DataType.UINT32]
+8479: tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_2D[W=1024-H=512-use_multicore=False-in_dtype=DataType.UINT16]
+8480: [gw6] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_width_sharded[shard_scheme=TensorMemoryLayout.WIDTH_SHARDED-shape=[1, 2, 96, 128]-layout=Layout.TILE-dtype=DataType.BFLOAT16]
+8481: tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_width_sharded[shard_scheme=TensorMemoryLayout.WIDTH_SHARDED-shape=[1, 2, 96, 128]-layout=Layout.ROW_MAJOR-dtype=DataType.UINT32]
+8482: [gw3] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_tilized_interleaved_to_nd_sharded_dtype_conversion[shard_orientation=ShardOrientation.ROW_MAJOR-input_dtype=DataType.BFLOAT16-output_dtype=DataType.FLOAT32-pcc=0.9999-tensor_shape=[4, 1, 32, 64]-shard_shape=[1, 1, 32, 64]-grid={[0-0 - 3-0]}]
+
+--- Error Section 7 ---
+10361: [gw7] PASSED tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile_program_cache[reshape_tile_mode=TileReshapeMapMode.RECREATE]
+10362: tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_previously_failing_test
+10363: [gw6] PASSED tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.float32, DataType.FLOAT32)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::DRAM,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(2, 2, 1)-output_shape=(1, 4, 1)]
+10364: tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.float32, DataType.FLOAT32)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::DRAM,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(16, 1, 5)-output_shape=(4, 2, 10)]
+10365: [gw3] node down: Not properly terminated
+10366: [gw3] FAILED tests/ttnn/unit_tests/base_functionality/test_expand.py::test_expand[dtype=DataType.BFLOAT16-tensor_layout=Layout.TILE-input_shape=(1, 32)-output_shape=(32, -1)]
+10367: 
+10368: replacing crashed worker gw3
+10369: [gw6] PASSED tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.float32, DataType.FLOAT32)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::DRAM,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(16, 1, 5)-output_shape=(4, 2, 10)]
+10370: tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.float32, DataType.FLOAT32)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::DRAM,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(1, 256, 1)-output_shape=(1, 256)]
+10371: [gw7] PASSED tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_previously_failing_test
+10372: tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_host[input_shape=(1, 256, 1)-output_shape=(1, 256)]
+10373: [gw7] PASSED tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_host[input_shape=(1, 256, 1)-output_shape=(1, 256)]
+
+--- Error Section 8 ---
+10470: [gw7] PASSED tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_bf8_support[input_shape=(1, 256, 32)-output_shape=(32, 256)]
+10471: tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_bf8_support[input_shape=(1, 256, 1024)-output_shape=(1, 128, 32, 64)]
+10472: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_tilize_2D[W=1056-H=128-use_multicore=True-in_dtype=DataType.UINT16]
+10473: tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_tilize_2D[W=1056-H=2048-use_multicore=False-in_dtype=DataType.BFLOAT16]
+10474: [gw8] node down: Not properly terminated
+10475: [gw8] FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_bfloat8_b_to_bfloat16[shape=(30, 62)]
+10476: 
+10477: replacing crashed worker gw8
+10478: [gw7] PASSED tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_bf8_support[input_shape=(1, 256, 1024)-output_shape=(1, 128, 32, 64)]
+10479: tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_bf8_support[input_shape=(64, 32)-output_shape=(32, 64)]
+10480: [gw7] PASSED tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_bf8_support[input_shape=(64, 32)-output_shape=(32, 64)]
+10481: tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_bf8_support[input_shape=(1, 1445, 192)-output_shape=(1445, 192)]
+10482: [gw7] PASSED tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_bf8_support[input_shape=(1, 1445, 192)-output_shape=(1445, 192)]
+
+--- Error Section 9 ---
+10679: [gw7] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_subcore[sub_core_grids={[1-0 - 3-6], [5-0 - 6-6]}-output_layout=Layout.TILE-input_layout=Layout.TILE-w=1-h=65]
+10680: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_subcore[sub_core_grids={[1-0 - 3-6], [5-0 - 6-6]}-output_layout=Layout.TILE-input_layout=Layout.TILE-w=17-h=1]
+10681: [gw7] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_subcore[sub_core_grids={[1-0 - 3-6], [5-0 - 6-6]}-output_layout=Layout.TILE-input_layout=Layout.TILE-w=17-h=1]
+10682: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_subcore[sub_core_grids={[1-0 - 3-6], [5-0 - 6-6]}-output_layout=Layout.TILE-input_layout=Layout.TILE-w=17-h=18]
+10683: [gw9] node down: Not properly terminated
+10684: [gw9] FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_hangs[output_layout=Layout.ROW_MAJOR-input_layout=Layout.TILE-shape=[3, 50, 1, 1, 1024]]
+10685: 
+10686: replacing crashed worker gw9
+10687: [gw7] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_subcore[sub_core_grids={[1-0 - 3-6], [5-0 - 6-6]}-output_layout=Layout.TILE-input_layout=Layout.TILE-w=17-h=18]
+10688: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_subcore[sub_core_grids={[1-0 - 3-6], [5-0 - 6-6]}-output_layout=Layout.TILE-input_layout=Layout.TILE-w=17-h=65]
+10689: [gw6] PASSED tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_4d_5d_layout
+10690: tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_rm_interleaved_wide_multi_page[input_shape=(128, 4096)-output_shape=(64, 8192)]
+10691: [gw7] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_subcore[sub_core_grids={[1-0 - 3-6], [5-0 - 6-6]}-output_layout=Layout.TILE-input_layout=Layout.TILE-w=17-h=65]
+
+--- Error Section 10 ---
+10715: [gw6] PASSED tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_rm_interleaved_wide_multi_page[input_shape=(128, 4096)-output_shape=(64, 8192)]
+10716: tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_rm_interleaved_wide_multi_page[input_shape=(256, 2048)-output_shape=(128, 4096)]
+10717: [gw7] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_subcore[sub_core_grids=None-output_layout=Layout.ROW_MAJOR-input_layout=Layout.ROW_MAJOR-w=65-h=65]
+10718: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_subcore[sub_core_grids=None-output_layout=Layout.ROW_MAJOR-input_layout=Layout.TILE-w=1-h=1]
+10719: [gw7] node down: Not properly terminated
+10720: [gw7] FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_subcore[sub_core_grids=None-output_layout=Layout.ROW_MAJOR-input_layout=Layout.TILE-w=1-h=1]
+10721: 
+10722: replacing crashed worker gw7
+10723: [gw6] PASSED tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_rm_interleaved_wide_multi_page[input_shape=(256, 2048)-output_shape=(128, 4096)]
+10724: tests/ttnn/unit_tests/base_functionality/test_reshape_transpose.py::test_transpose_with_reshape
+10725: [gw6] PASSED tests/ttnn/unit_tests/base_functionality/test_reshape_transpose.py::test_transpose_with_reshape
+10726: tests/ttnn/unit_tests/base_functionality/test_roll.py::test_roll[input_tensor=[[1, 2], [3, 4], [5, 6], [7, 8]]-shifts=1-dim=0-layout=Layout.ROW_MAJOR-dtype=torch.float32-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::DRAM,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)]
+10727: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_tilize_2D[W=1056-H=2048-use_multicore=False-in_dtype=DataType.UINT32]
+
+--- Error Section 11 ---
+10835: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_tilize_2D[W=1056-H=2048-use_multicore=True-in_dtype=DataType.UINT32]
+10836: tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_tilize_2D[W=1056-H=2048-use_multicore=True-in_dtype=DataType.UINT16]
+10837: [gw10] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_sharded_to_interleaved_unpad[single_matrix_split-output_buffer_type=BufferType.L1-dtype=DataType.BFLOAT16]
+10838: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_sharded_to_interleaved_unpad[single_matrix_split-output_buffer_type=BufferType.L1-dtype=DataType.BFLOAT8_B]
+10839: [gw6] node down: Not properly terminated
+10840: [gw6] FAILED tests/ttnn/unit_tests/base_functionality/test_roll.py::test_roll[input_tensor=[[[0, 1, 2, 3, 4], [5, 6, 7, 8, 9], [10, 11, 12, 13, 14], [15, 16, 17, 18, 19]], [[20, 21, 22, 23, 24], [25, 26, 27, 28, 29], [30, 31, 32, 33, 34], [35, 36, 37, 38, 39]], [[40, 41, 42, 43, 44], [45, 46, 47, 48, 49], [50, 51, 52, 53, 54], [55, 56, 57, 58, 59]], [[60, 61, 62, 63, 64], [65, 66, 67, 68, 69], [70, 71, 72, 73, 74], [75, 76, 77, 78, 79]], [[80, 81, 82, 83, 84], [85, 86, 87, 88, 89], [90, 91, 92, 93, 94], [95, 96, 97, 98, 99]], [[100, 101, 102, 103, 104], [105, 106, 107, 108, 109], [110, 111, 112, 113, 114], [115, 116, 117, 118, 119]]]-shifts=[-2, -1]-dim=[0, 1]-layout=Layout.TILE-dtype=torch.float32-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::DRAM,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)]
+10841: 
+10842: replacing crashed worker gw6
+10843: [gw10] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_sharded_to_interleaved_unpad[single_matrix_split-output_buffer_type=BufferType.L1-dtype=DataType.BFLOAT8_B]
+10844: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_sharded_to_interleaved_unpad[single_matrix_split-output_buffer_type=BufferType.DRAM-dtype=DataType.BFLOAT16]
+10845: [gw10] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_sharded_to_interleaved_unpad[single_matrix_split-output_buffer_type=BufferType.DRAM-dtype=DataType.BFLOAT16]
+10846: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_sharded_to_interleaved_unpad[single_matrix_split-output_buffer_type=BufferType.DRAM-dtype=DataType.BFLOAT8_B]
+10847: [gw10] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_sharded_to_interleaved_unpad[single_matrix_split-output_buffer_type=BufferType.DRAM-dtype=DataType.BFLOAT8_B]
+
+--- Error Section 12 ---
+10861:   warner(PytestBenchmarkWarning(text))
+10862: 
+10863: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_with_unpadding_2D[W=64-H=32-use_multicore=False-in_dtype=DataType.FLOAT32]
+10864: tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_with_unpadding_2D[W=64-H=32-use_multicore=False-in_dtype=DataType.INT32]
+10865: [gw10] node down: Not properly terminated
+10866: [gw10] FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_int_untilize[sentence_size=32-batch_size=9]
+10867: 
+10868: replacing crashed worker gw10
+10869: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_with_unpadding_2D[W=64-H=32-use_multicore=False-in_dtype=DataType.INT32]
+10870: tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_with_unpadding_2D[W=64-H=32-use_multicore=False-in_dtype=DataType.UINT32] 2026-07-29 13:37:54.936 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:45 - Fast Runtime Mode is ON. Skipping tests tagged with @pytest.mark.requires_fast_runtime_mode_off
+10871: 2026-07-29 13:37:54.937 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_failed_comparison[dim=-1-w=128-h=64-batch_size=1]>
+10872: 2026-07-29 13:37:54.939 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_dispatch_context_init_and_terminate[silicon_arch_name=blackhole-dtype=DataType.BFLOAT16-layout=Layout.TILE]>
+10873: 2026-07-29 13:37:54.939 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_async_sd_state_preserved_across_fd[silicon_arch_name=blackhole]>
+
+--- Error Section 13 ---
+10906: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_with_unpadding_2D[W=64-H=32-use_multicore=False-in_dtype=DataType.UINT32]
+10907: tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_with_unpadding_2D[W=64-H=32-use_multicore=False-in_dtype=DataType.UINT16] /opt/venv/lib/python3.10/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+10908:   warner(PytestBenchmarkWarning(text))
+10909: 
+10910: [gw12] node down: Not properly terminated
+10911: [gw12] FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_pad_value_dtype[shape=(30, 62)-ttnn_dtype=DataType.INT32-pad_value=0]
+10912: 
+10913: replacing crashed worker gw12
+10914: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_with_unpadding_2D[W=64-H=32-use_multicore=False-in_dtype=DataType.UINT16]
+10915: tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_with_unpadding_2D[W=64-H=32-use_multicore=True-in_dtype=DataType.BFLOAT16]
+10916: [gw2] node down: Not properly terminated
+10917: [gw2] FAILED tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_with_unpadding_2D[W=64-H=32-use_multicore=True-in_dtype=DataType.BFLOAT16] 2026-07-29 13:38:03.154 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:45 - Fast Runtime Mode is ON. Skipping tests tagged with @pytest.mark.requires_fast_runtime_mode_off
+10918: 2026-07-29 13:38:03.154 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_failed_comparison[dim=-1-w=128-h=64-batch_size=1]>
+10919: 2026-07-29 13:38:03.157 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_dispatch_context_init_and_terminate[silicon_arch_name=blackhole-dtype=DataType.BFLOAT16-layout=Layout.TILE]>
+10920: 2026-07-29 13:38:03.157 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_async_sd_state_preserved_across_fd[silicon_arch_name=blackhole]>
+10921: 2026-07-29 13:38:03.159 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_pre_operaiton_hook_for_storing_input_activations[dim=-1-w=32-h=32-batch_size=1]>
+10922: 2026-07-29 13:38:03.160 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_operation_parameter_tracing[2x3_bfloat16]>
+
+--- Error Section 14 ---
+10948: ttnn-sanity-tests / core ttnn unit test group [sim_blackhole]	UNKNOWN STEP
+10949: ##[warning]Unknown config option: timeout
+10950: ttnn-sanity-tests / core ttnn unit test group [sim_blackhole]	UNKNOWN STEP
+10951: 
+10952: 
+10953: replacing crashed worker gw2
+10954: 
+10955: tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=32-H=480-C=7-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B]
+10956: [gw13] node down: Not properly terminated
+10957: [gw13] FAILED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=32-H=480-C=7-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B] /opt/venv/lib/python3.10/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+10958:   warner(PytestBenchmarkWarning(text))
+10959: /opt/venv/lib/python3.10/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+10960:   warner(PytestBenchmarkWarning(text))
+10961: /opt/venv/lib/python3.10/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+10962:   warner(PytestBenchmarkWarning(text))
+
+--- Error Section 15 ---
+10994: ttnn-sanity-tests / core ttnn unit test group [sim_blackhole]	UNKNOWN STEP
+10995: ##[warning]Unknown config option: timeout
+10996: ttnn-sanity-tests / core ttnn unit test group [sim_blackhole]	UNKNOWN STEP
+10997: 
+10998: 
+10999: replacing crashed worker gw13
+11000: 
+11001: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_rm_to_tile[shard_orientation=ShardOrientation.ROW_MAJOR-output_memory_mode=different_shard-even_diff_reshard_dim0]
+11002: [gw14] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_rm_to_tile[shard_orientation=ShardOrientation.ROW_MAJOR-output_memory_mode=different_shard-even_diff_reshard_dim0]
+11003: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_rm_to_tile[shard_orientation=ShardOrientation.ROW_MAJOR-output_memory_mode=different_shard-even_diff_collapse] 2026-07-29 13:38:11.940 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:45 - Fast Runtime Mode is ON. Skipping tests tagged with @pytest.mark.requires_fast_runtime_mode_off
+11004: 2026-07-29 13:38:11.941 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_failed_comparison[dim=-1-w=128-h=64-batch_size=1]>
+
+--- Error Section 16 ---
+11214: [gw15] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_rm_to_tile[shard_orientation=ShardOrientation.COL_MAJOR-output_memory_mode=same_shard-even_diff_collapse]
+11215: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_rm_to_tile[shard_orientation=ShardOrientation.COL_MAJOR-output_memory_mode=same_shard-even_diff_reshard_dim01]
+11216: [gw14] PASSED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=10-W=32-H=128-C=1-N=2-use_multicore=False-in_dtype=DataType.BFLOAT8_B]
+11217: tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=10-W=32-H=128-C=1-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B]
+11218: [gw14] node down: Not properly terminated
+11219: [gw14] FAILED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=10-W=32-H=128-C=1-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B]
+11220: 
+11221: replacing crashed worker gw14
+11222: [gw16] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_tile_to_rm[shard_orientation=ShardOrientation.COL_MAJOR-output_memory_mode=same_shard-even_in_uneven_out]
+11223: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_tile_to_rm[shard_orientation=ShardOrientation.COL_MAJOR-output_memory_mode=same_shard-uneven_in_uneven_out]
+11224: [gw15] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_rm_to_tile[shard_orientation=ShardOrientation.COL_MAJOR-output_memory_mode=same_shard-even_diff_reshard_dim01]
+11225: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_rm_to_tile[shard_orientation=ShardOrientation.COL_MAJOR-output_memory_mode=same_shard-uneven_in_same]
+11226: [gw15] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_rm_to_tile[shard_orientation=ShardOrientation.COL_MAJOR-output_memory_mode=same_shard-uneven_in_same]
+
+--- Error Section 17 ---
+12500: [gw16] PASSED tests/ttnn/unit_tests/base_functionality/test_to_memory_config.py::test_to_memory_config_tilized_nd_sharded_to_interleaved[output_buffer_type=BufferType.L1-shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[6, 32, 64]-shard_shape=[2, 32, 64]-grid={[0-0 - 2-0]}]
+12501: tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=32-H=480-C=7-N=2-use_multicore=False-in_dtype=DataType.BFLOAT8_B]
+12502: [gw17] PASSED tests/ttnn/unit_tests/base_functionality/test_to_memory_config.py::test_to_memory_config_tilized_legacy_sharded_to_nd_sharded[shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[1, 1, 192, 192]-input_shard_layout=TensorMemoryLayout.BLOCK_SHARDED-input_shard_shape=(64, 64)-input_grid={[0-0 - 2-2]}-output_nd_shard_shape=[1, 1, 128, 128]-output_grid={[0-0 - 3-0]}]
+12503: tests/ttnn/unit_tests/base_functionality/test_to_memory_config.py::test_to_memory_config_tilized_legacy_sharded_to_nd_sharded[shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[3, 5, 160, 96]-input_shard_layout=TensorMemoryLayout.HEIGHT_SHARDED-input_shard_shape=(96, 96)-input_grid={[0-0 - 7-3]}-output_nd_shard_shape=[2, 3, 96, 64]-output_grid={[0-0 - 5-1]}]
+12504: [gw15] node down: Not properly terminated
+12505: [gw15] FAILED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=416-H=128-C=7-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B]
+12506: 
+12507: replacing crashed worker gw15
+12508: [gw17] PASSED tests/ttnn/unit_tests/base_functionality/test_to_memory_config.py::test_to_memory_config_tilized_legacy_sharded_to_nd_sharded[shard_orientation=ShardOrientation.COL_MAJOR-tensor_shape=[3, 5, 160, 96]-input_shard_layout=TensorMemoryLayout.HEIGHT_SHARDED-input_shard_shape=(96, 96)-input_grid={[0-0 - 7-3]}-output_nd_shard_shape=[2, 3, 96, 64]-output_grid={[0-0 - 5-1]}]
+12509: tests/ttnn/unit_tests/base_functionality/test_to_memory_config.py::test_to_memory_config_tilized_nd_sharded_to_nd_sharded[shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[6, 32, 64]-input_nd_shard_shape=[2, 32, 64]-input_grid={[0-0 - 2-0]}-output_nd_shard_shape=[3, 32, 64]-output_grid={[0-0 - 1-0]}]
+12510: [gw17] PASSED tests/ttnn/unit_tests/base_functionality/test_to_memory_config.py::test_to_memory_config_tilized_nd_sharded_to_nd_sharded[shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[6, 32, 64]-input_nd_shard_shape=[2, 32, 64]-input_grid={[0-0 - 2-0]}-output_nd_shard_shape=[3, 32, 64]-output_grid={[0-0 - 1-0]}]
+12511: tests/ttnn/unit_tests/base_functionality/test_to_memory_config.py::test_to_memory_config_tilized_nd_sharded_to_nd_sharded[shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[4, 6, 32, 64]-input_nd_shard_shape=[1, 2, 32, 64]-input_grid={[0-0 - 5-1]}-output_nd_shard_shape=[2, 3, 32, 64]-output_grid={[0-0 - 3-0]}]
+12512: [gw17] PASSED tests/ttnn/unit_tests/base_functionality/test_to_memory_config.py::test_to_memory_config_tilized_nd_sharded_to_nd_sharded[shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[4, 6, 32, 64]-input_nd_shard_shape=[1, 2, 32, 64]-input_grid={[0-0 - 5-1]}-output_nd_shard_shape=[2, 3, 32, 64]-output_grid={[0-0 - 3-0]}]
+
+--- Error Section 18 ---
+12572: [gw17] PASSED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=3-i_h=20-W=32-H=128-C=1-N=2-use_multicore=False-in_dtype=DataType.BFLOAT8_B]
+12573: tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=3-i_h=20-W=32-H=128-C=1-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B] /opt/venv/lib/python3.10/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+12574:   warner(PytestBenchmarkWarning(text))
+12575: 
+12576: [gw17] node down: Not properly terminated
+12577: [gw17] FAILED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=3-i_h=20-W=32-H=128-C=1-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B] 2026-07-29 13:40:27.293 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:45 - Fast Runtime Mode is ON. Skipping tests tagged with @pytest.mark.requires_fast_runtime_mode_off
+12578: 2026-07-29 13:40:27.294 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_failed_comparison[dim=-1-w=128-h=64-batch_size=1]>
+12579: 2026-07-29 13:40:27.296 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_dispatch_context_init_and_terminate[silicon_arch_name=blackhole-dtype=DataType.BFLOAT16-layout=Layout.TILE]>
+12580: 2026-07-29 13:40:27.297 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_async_sd_state_preserved_across_fd[silicon_arch_name=blackhole]>
+12581: 2026-07-29 13:40:27.300 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_pre_operaiton_hook_for_storing_input_activations[dim=-1-w=32-h=32-batch_size=1]>
+12582: 2026-07-29 13:40:27.301 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_operation_parameter_tracing[2x3_bfloat16]>
+
+--- Error Section 19 ---
+12608: ttnn-sanity-tests / core ttnn unit test group [sim_blackhole]	UNKNOWN STEP
+12609: ##[warning]Unknown config option: timeout
+12610: ttnn-sanity-tests / core ttnn unit test group [sim_blackhole]	UNKNOWN STEP
+12611: 
+12612: 
+12613: replacing crashed worker gw17
+12614: 
+12615: tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=3-i_h=20-W=416-H=480-C=7-N=2-use_multicore=False-in_dtype=DataType.BFLOAT8_B]
+12616: [gw16] PASSED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=32-H=480-C=7-N=2-use_multicore=False-in_dtype=DataType.BFLOAT8_B]
+12617: tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=32-H=480-C=7-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B] /opt/venv/lib/python3.10/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+12618:   warner(PytestBenchmarkWarning(text))
+12619: 
+12620: [gw16] node down: Not properly terminated
+12621: [gw16] FAILED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=32-H=480-C=7-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B] 2026-07-29 13:40:35.041 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:45 - Fast Runtime Mode is ON. Skipping tests tagged with @pytest.mark.requires_fast_runtime_mode_off
+12622: 2026-07-29 13:40:35.043 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_failed_comparison[dim=-1-w=128-h=64-batch_size=1]>
+12623: 2026-07-29 13:40:35.046 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_dispatch_context_init_and_terminate[silicon_arch_name=blackhole-dtype=DataType.BFLOAT16-layout=Layout.TILE]>
+12624: 2026-07-29 13:40:35.046 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_async_sd_state_preserved_across_fd[silicon_arch_name=blackhole]>
+12625: 2026-07-29 13:40:35.051 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_pre_operaiton_hook_for_storing_input_activations[dim=-1-w=32-h=32-batch_size=1]>
+12626: 2026-07-29 13:40:35.051 | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_operation_parameter_tracing[2x3_bfloat16]>
+
+--- Error Section 20 ---
+12652: ttnn-sanity-tests / core ttnn unit test group [sim_blackhole]	UNKNOWN STEP
+12653: ##[warning]Unknown config option: timeout
+12654: ttnn-sanity-tests / core ttnn unit test group [sim_blackhole]	UNKNOWN STEP
+12655: 
+12656: 
+12657: maximum crashed workers reached: 16
+12658: 
+12659: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_2D[start_with_padding=False-to_layout=Layout.TILE-from_layout=Layout.TILE-on_device=False-width=62-height=30]
+12660: [gw19] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_2D[start_with_padding=False-to_layout=Layout.TILE-from_layout=Layout.TILE-on_device=False-width=62-height=30]
+12661: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_2D[start_with_padding=True-to_layout=Layout.ROW_MAJOR-from_layout=Layout.ROW_MAJOR-on_device=True-width=32-height=32]
+12662: [gw19] SKIPPED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_2D[start_with_padding=True-to_layout=Layout.ROW_MAJOR-from_layout=Layout.ROW_MAJOR-on_device=True-width=32-height=32]
+
+--- Error Section 21 ---
+12718: [gw19] SKIPPED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_2D[start_with_padding=True-to_layout=Layout.TILE-from_layout=Layout.TILE-on_device=False-width=32-height=32]
+12719: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_int_untilize[sentence_size=32-batch_size=32]
+12720: [gw19] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_int_untilize[sentence_size=32-batch_size=32]
+12721: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_int_untilize[sentence_size=256-batch_size=9]
+12722: [gw19] node down: Not properly terminated
+12723: [gw19] FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_int_untilize[sentence_size=256-batch_size=9]
+12724: 
+12725: maximum crashed workers reached: 16
+12726: [gw18] PASSED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=3-i_h=20-W=416-H=480-C=7-N=2-use_multicore=False-in_dtype=DataType.BFLOAT8_B]
+12727: tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=3-i_h=20-W=416-H=480-C=7-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B]
+12728: [gw18] node down: Not properly terminated
+12729: [gw18] FAILED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=3-i_h=20-W=416-H=480-C=7-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B]
+12730: 
+12731: maximum crashed workers reached: 16
+12732: [gw11] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_low_perf[device_params={'dispatch_core_axis': DispatchCoreAxis.COL}-dtype=DataType.INT32-sub_core_grids={[1-0 - 3-6], [5-0 - 6-6]}-shape=[32, 131072]]
+12733: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_low_perf[device_params={'dispatch_core_axis': DispatchCoreAxis.COL}-dtype=DataType.UINT16-sub_core_grids={[1-0 - 1-0]}-shape=[32, 131072]]
+12734: [gw11] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_low_perf[device_params={'dispatch_core_axis': DispatchCoreAxis.COL}-dtype=DataType.UINT16-sub_core_grids={[1-0 - 1-0]}-shape=[32, 131072]]
+
+--- Error Section 22 ---
+12742: [gw11] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_wh2[input_layout=Layout.ROW_MAJOR-output_layout=Layout.ROW_MAJOR-shape=[11432, 11021]]
+12743: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_wh2[input_layout=Layout.ROW_MAJOR-output_layout=Layout.TILE-shape=[11432, 11021]]
+12744: [gw11] PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_wh2[input_layout=Layout.ROW_MAJOR-output_layout=Layout.TILE-shape=[11432, 11021]]
+12745: tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_untilize_with_unpad_int32[dtype=DataType.UINT32-shape=[32, 128]]
+12746: [gw11] node down: Not properly terminated
+12747: [gw11] FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_untilize_with_unpad_int32[dtype=DataType.UINT32-shape=[32, 128]]
+12748: 
+12749: maximum crashed workers reached: 16
+12750: 
+12751: =================================== FAILURES ===================================
+12752: ________ tests/ttnn/unit_tests/base_functionality/test_concat_issue.py _________
+12753: [gw0] linux -- Python 3.10.19 /opt/venv/bin/python3
+12754: worker 'gw0' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_concat_issue.py::test_5d_concat_tile[layout=Layout.TILE]'
+12755: ___________ tests/ttnn/unit_tests/base_functionality/test_expand.py ____________
+12756: [gw1] linux -- Python 3.10.19 /opt/venv/bin/python3
+12757: worker 'gw1' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_expand.py::test_expand[dtype=DataType.BFLOAT16-tensor_layout=Layout.TILE-input_shape=(4, 1)-output_shape=(4, 2)]'
+12758: __________ tests/ttnn/unit_tests/base_functionality/test_to_layout.py __________
+12759: [gw4] linux -- Python 3.10.19 /opt/venv/bin/python3
+12760: worker 'gw4' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_2D[start_with_padding=False-to_layout=Layout.ROW_MAJOR-from_layout=Layout.TILE-on_device=True-width=32-height=30]'
+12761: _____ tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py ______
+12762: [gw5] linux -- Python 3.10.19 /opt/venv/bin/python3
+12763: worker 'gw5' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=10-W=32-H=128-C=1-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B]'
+12764: ___________ tests/ttnn/unit_tests/base_functionality/test_expand.py ____________
+12765: [gw3] linux -- Python 3.10.19 /opt/venv/bin/python3
+12766: worker 'gw3' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_expand.py::test_expand[dtype=DataType.BFLOAT16-tensor_layout=Layout.TILE-input_shape=(1, 32)-output_shape=(32, -1)]'
+12767: __________ tests/ttnn/unit_tests/base_functionality/test_to_layout.py __________
+12768: [gw8] linux -- Python 3.10.19 /opt/venv/bin/python3
+12769: worker 'gw8' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_bfloat8_b_to_bfloat16[shape=(30, 62)]'
+12770: __________ tests/ttnn/unit_tests/base_functionality/test_to_layout.py __________
+12771: [gw9] linux -- Python 3.10.19 /opt/venv/bin/python3
+12772: worker 'gw9' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_hangs[output_layout=Layout.ROW_MAJOR-input_layout=Layout.TILE-shape=[3, 50, 1, 1, 1024]]'
+12773: __________ tests/ttnn/unit_tests/base_functionality/test_to_layout.py __________
+12774: [gw7] linux -- Python 3.10.19 /opt/venv/bin/python3
+12775: worker 'gw7' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_subcore[sub_core_grids=None-output_layout=Layout.ROW_MAJOR-input_layout=Layout.TILE-w=1-h=1]'
+12776: ____________ tests/ttnn/unit_tests/base_functionality/test_roll.py _____________
+12777: [gw6] linux -- Python 3.10.19 /opt/venv/bin/python3
+12778: worker 'gw6' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_roll.py::test_roll[input_tensor=[[[0, 1, 2, 3, 4], [5, 6, 7, 8, 9], [10, 11, 12, 13, 14], [15, 16, 17, 18, 19]], [[20, 21, 22, 23, 24], [25, 26, 27, 28, 29], [30, 31, 32, 33, 34], [35, 36, 37, 38, 39]], [[40, 41, 42, 43, 44], [45, 46, 47, 48, 49], [50, 51, 52, 53, 54], [55, 56, 57, 58, 59]], [[60, 61, 62, 63, 64], [65, 66, 67, 68, 69], [70, 71, 72, 73, 74], [75, 76, 77, 78, 79]], [[80, 81, 82, 83, 84], [85, 86, 87, 88, 89], [90, 91, 92, 93, 94], [95, 96, 97, 98, 99]], [[100, 101, 102, 103, 104], [105, 106, 107, 108, 109], [110, 111, 112, 113, 114], [115, 116, 117, 118, 119]]]-shifts=[-2, -1]-dim=[0, 1]-layout=Layout.TILE-dtype=torch.float32-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::DRAM,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)]'
+12779: __________ tests/ttnn/unit_tests/base_functionality/test_to_layout.py __________
+12780: [gw10] linux -- Python 3.10.19 /opt/venv/bin/python3
+12781: worker 'gw10' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_int_untilize[sentence_size=32-batch_size=9]'
+12782: __________ tests/ttnn/unit_tests/base_functionality/test_to_layout.py __________
+12783: [gw12] linux -- Python 3.10.19 /opt/venv/bin/python3
+12784: worker 'gw12' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_pad_value_dtype[shape=(30, 62)-ttnn_dtype=DataType.INT32-pad_value=0]'
+12785: _____ tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py ______
+12786: [gw2] linux -- Python 3.10.19 /opt/venv/bin/python3
+12787: worker 'gw2' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_with_unpadding_2D[W=64-H=32-use_multicore=True-in_dtype=DataType.BFLOAT16]'
+12788: _____ tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py ______
+12789: [gw13] linux -- Python 3.10.19 /opt/venv/bin/python3
+12790: worker 'gw13' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=32-H=480-C=7-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B]'
+12791: _____ tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py ______
+12792: [gw14] linux -- Python 3.10.19 /opt/venv/bin/python3
+12793: worker 'gw14' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=10-W=32-H=128-C=1-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B]'
+12794: _____ tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py ______
+12795: [gw15] linux -- Python 3.10.19 /opt/venv/bin/python3
+12796: worker 'gw15' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=416-H=128-C=7-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B]'
+12797: _____ tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py ______
+12798: [gw17] linux -- Python 3.10.19 /opt/venv/bin/python3
+12799: worker 'gw17' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=3-i_h=20-W=32-H=128-C=1-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B]'
+12800: _____ tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py ______
+12801: [gw16] linux -- Python 3.10.19 /opt/venv/bin/python3
+12802: worker 'gw16' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=32-H=480-C=7-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B]'
+12803: __________ tests/ttnn/unit_tests/base_functionality/test_to_layout.py __________
+12804: [gw19] linux -- Python 3.10.19 /opt/venv/bin/python3
+12805: worker 'gw19' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_int_untilize[sentence_size=256-batch_size=9]'
+12806: _____ tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py ______
+12807: [gw18] linux -- Python 3.10.19 /opt/venv/bin/python3
+12808: worker 'gw18' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=3-i_h=20-W=416-H=480-C=7-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B]'
+12809: __________ tests/ttnn/unit_tests/base_functionality/test_to_layout.py __________
+12810: [gw11] linux -- Python 3.10.19 /opt/venv/bin/python3
+12811: worker 'gw11' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_untilize_with_unpad_int32[dtype=DataType.UINT32-shape=[32, 128]]'
+12812: =============================== warnings summary ===============================
+12813: .. /opt/venv/lib/python3.10/site-packages/_pytest/config/__init__.py:1434: 21 warnings
+12814:   /opt/venv/lib/python3.10/site-packages/_pytest/config/__init__.py:1434: PytestConfigWarning: Unknown config option: timeout
+12815: 
+12816:     self._warn_or_fail_if_strict(f"Unknown config option: {key}\n")
+
+--- Error Section 23 ---
+12819:   /work/models/demos/deepseek_v3_b1/weights/overlap/packing.py:163: UserWarning: The given buffer is not writable, and PyTorch does not support non-writable tensors. This means you can write to the underlying (supposedly non-writable) buffer using the tensor. You may want to copy the buffer to protect its data or make it writable before converting it to a tensor. This type of warning will be suppressed for the rest of this program. (Triggered internally at /pytorch/torch/csrc/utils/tensor_new.cpp:1586.)
+12820:     per_device_raw[row].append(torch.frombuffer(bytes(dev_packed), dtype=torch.int32).clone())
+12821: 
+12822: -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+12823: ==================================== PASSES ====================================
+12824: ================== xdist: maximum crashed workers reached: 16 ==================
+12825: - generated xml file: /work/generated/test_reports/most_recent_tests_20260729_132622.xml -
+12826: ============================= slowest 25 durations =============================
+12827: 125.23s call     tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_low_perf[device_params={'dispatch_core_axis': DispatchCoreAxis.COL}-dtype=DataType.INT32-sub_core_grids={[1-0 - 1-0]}-shape=[32, 131072]]
+12828: 97.87s call     tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_low_perf[device_params={'dispatch_core_axis': DispatchCoreAxis.COL}-dtype=DataType.INT32-sub_core_grids={[1-0 - 3-6], [5-0 - 6-6]}-shape=[32, 131072]]
+12829: 56.17s call     tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_low_perf[device_params={'dispatch_core_axis': DispatchCoreAxis.COL}-dtype=DataType.UINT16-sub_core_grids={[1-0 - 1-0]}-shape=[32, 131072]]
+
+--- Error Section 24 ---
+15134: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 128, 160]-shard_shape=[3, 32, 32]-layout=Layout.TILE]
+15135: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 128, 160]-shard_shape=[1, 128, 32]-layout=Layout.TILE]
+15136: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 128, 160]-shard_shape=[1, 32, 160]-layout=Layout.TILE]
+15137: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_multiple_dims[input_shape=(3, 1, 1, 1, 1280)-dims=[1, 2, 3]-layout=Layout.TILE]
+15138: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 128, 160]-shard_shape=[1, 32, 32]-layout=Layout.TILE]
+15139: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[4]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+15140: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[30, 40, 55]-shard_shape=[30, 40, 10]-layout=Layout.ROW_MAJOR]
+15141: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[30, 45, 50]-shard_shape=[30, 10, 50]-layout=Layout.ROW_MAJOR0]
+15142: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[35, 40, 50]-shard_shape=[10, 40, 50]-layout=Layout.ROW_MAJOR0]
+15143: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[4]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+15144: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[30, 45, 50]-shard_shape=[30, 10, 50]-layout=Layout.ROW_MAJOR1]
+15145: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[35, 40, 50]-shard_shape=[10, 40, 50]-layout=Layout.ROW_MAJOR1]
+15146: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[-5]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+15147: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[35, 45, 50]-shard_shape=[10, 10, 50]-layout=Layout.ROW_MAJOR]
+15148: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[-5]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+15149: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[35, 45, 55]-shard_shape=[10, 10, 10]-layout=Layout.ROW_MAJOR]
+15150: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, 0]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+15151: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 128, 165]-shard_shape=[3, 128, 32]-layout=Layout.TILE]
+15152: PASSED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize[W=256-H=32-C=1-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B]
+15153: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, 0]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+15154: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[3, 130, 160]-shard_shape=[3, 32, 160]-layout=Layout.TILE]
+15155: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT8-buffer_type=BufferType.DRAM-tensor_shape=[5, 128, 160]-shard_shape=[2, 128, 160]-layout=Layout.TILE]
+
+--- Error Section 25 ---
+15163: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 4, 5]-shard_shape=[1, 4, 5]-layout=Layout.ROW_MAJOR]
+15164: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 4, 5]-shard_shape=[3, 1, 1]-layout=Layout.ROW_MAJOR]
+15165: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 4, 5]-shard_shape=[1, 4, 1]-layout=Layout.ROW_MAJOR]
+15166: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 4, 5]-shard_shape=[1, 1, 5]-layout=Layout.ROW_MAJOR]
+15167: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 4, 5]-shard_shape=[1, 1, 1]-layout=Layout.ROW_MAJOR]
+15168: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, -4]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+15169: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 128, 160]-shard_shape=[3, 128, 160]-layout=Layout.TILE]
+15170: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 128, 160]-shard_shape=[3, 128, 32]-layout=Layout.TILE]
+15171: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 128, 160]-shard_shape=[3, 32, 160]-layout=Layout.TILE]
+15172: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 128, 160]-shard_shape=[1, 128, 160]-layout=Layout.TILE]
+15173: PASSED tests/ttnn/unit_tests/tensor/test_tensor_nd_sharding.py::test_tensor_nd_sharding_loopback[tt_dtype=DataType.UINT16-buffer_type=BufferType.L1-tensor_shape=[3, 128, 160]-shard_shape=[3, 32, 32]-layout=Layout.TILE]
+
+--- Error Section 26 ---
+17801: XFAIL tests/ttnn/unit_tests/tensor/test_tensor_conversion.py::test_tensor_conversion_with_python_dtype[python_lib=numpy-shape=(2, 3, 64, 96)-python_dtype_str=int64-convert_to_device=False] - int64 dtype is incorrectly handled in ttnn tensors, so roundtrip tests are not working!
+17802: XFAIL tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.int32, DataType.UINT32)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::L1,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(2888, 49, 96)-output_shape=(8, 19, 19, 7, 7, 96)] - Test case is too big for L1
+17803: XFAIL tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.int32, DataType.UINT32)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::L1,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(1, 1500, 1, 512)-output_shape=(1, 1500, 8, 64)] - Test case is too big for L1
+17804: XFAIL tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.float32, DataType.FLOAT32)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::L1,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(2888, 49, 96)-output_shape=(8, 19, 19, 7, 7, 96)] - Test case is too big for L1
+17805: XFAIL tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.float32, DataType.FLOAT32)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::L1,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(1, 1500, 1, 512)-output_shape=(1, 1500, 8, 64)] - Test case is too big for L1
+17806: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[dram-non_tile_aligned_h_only] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+17807: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[dram-non_tile_aligned_h_multi_shard] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+17808: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[dram-non_tile_aligned_with_outer_dim] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+17809: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[dram-non_tile_aligned_tensor_uneven_nd_multi_per_core] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+17810: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[l1-non_tile_aligned_h_only] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+17811: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[l1-non_tile_aligned_h_multi_shard] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+17812: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[l1-non_tile_aligned_with_outer_dim] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+17813: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[l1-non_tile_aligned_tensor_uneven_nd_multi_per_core] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+17814: FAILED tests/ttnn/unit_tests/base_functionality/test_concat_issue.py::test_5d_concat_tile[layout=Layout.TILE] - worker 'gw0' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_concat_issue.py::test_5d_concat_tile[layout=Layout.TILE]'
+17815: FAILED tests/ttnn/unit_tests/base_functionality/test_expand.py::test_expand[dtype=DataType.BFLOAT16-tensor_layout=Layout.TILE-input_shape=(4, 1)-output_shape=(4, 2)] - worker 'gw1' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_expand.py::test_expand[dtype=DataType.BFLOAT16-tensor_layout=Layout.TILE-input_shape=(4, 1)-output_shape=(4, 2)]'
+17816: FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_2D[start_with_padding=False-to_layout=Layout.ROW_MAJOR-from_layout=Layout.TILE-on_device=True-width=32-height=30] - worker 'gw4' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_2D[start_with_padding=False-to_layout=Layout.ROW_MAJOR-from_layout=Layout.TILE-on_device=True-width=32-height=30]'
+17817: FAILED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=10-W=32-H=128-C=1-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B] - worker 'gw5' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=10-W=32-H=128-C=1-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B]'
+17818: FAILED tests/ttnn/unit_tests/base_functionality/test_expand.py::test_expand[dtype=DataType.BFLOAT16-tensor_layout=Layout.TILE-input_shape=(1, 32)-output_shape=(32, -1)] - worker 'gw3' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_expand.py::test_expand[dtype=DataType.BFLOAT16-tensor_layout=Layout.TILE-input_shape=(1, 32)-output_shape=(32, -1)]'
+17819: FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_bfloat8_b_to_bfloat16[shape=(30, 62)] - worker 'gw8' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_bfloat8_b_to_bfloat16[shape=(30, 62)]'
+17820: FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_hangs[output_layout=Layout.ROW_MAJOR-input_layout=Layout.TILE-shape=[3, 50, 1, 1, 1024]] - worker 'gw9' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_hangs[output_layout=Layout.ROW_MAJOR-input_layout=Layout.TILE-shape=[3, 50, 1, 1, 1024]]'
+17821: FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_subcore[sub_core_grids=None-output_layout=Layout.ROW_MAJOR-input_layout=Layout.TILE-w=1-h=1] - worker 'gw7' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_subcore[sub_core_grids=None-output_layout=Layout.ROW_MAJOR-input_layout=Layout.TILE-w=1-h=1]'
+17822: FAILED tests/ttnn/unit_tests/base_functionality/test_roll.py::test_roll[input_tensor=[[[0, 1, 2, 3, 4], [5, 6, 7, 8, 9], [10, 11, 12, 13, 14], [15, 16, 17, 18, 19]], [[20, 21, 22, 23, 24], [25, 26, 27, 28, 29], [30, 31, 32, 33, 34], [35, 36, 37, 38, 39]], [[40, 41, 42, 43, 44], [45, 46, 47, 48, 49], [50, 51, 52, 53, 54], [55, 56, 57, 58, 59]], [[60, 61, 62, 63, 64], [65, 66, 67, 68, 69], [70, 71, 72, 73, 74], [75, 76, 77, 78, 79]], [[80, 81, 82, 83, 84], [85, 86, 87, 88, 89], [90, 91, 92, 93, 94 ... [truncated] ...  74], [75, 76, 77, 78, 79]], [[80, 81, 82, 83, 84], [85, 86, 87, 88, 89], [90, 91, 92, 93, 94], [95, 96, 97, 98, 99]], [[100, 101, 102, 103, 104], [105, 106, 107, 108, 109], [110, 111, 112, 113, 114], [115, 116, 117, 118, 119]]]-shifts=[-2, -1]-dim=[0, 1]-layout=Layout.TILE-dtype=torch.float32-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::DRAM,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)]'
+17823: FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_int_untilize[sentence_size=32-batch_size=9] - worker 'gw10' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_int_untilize[sentence_size=32-batch_size=9]'
+17824: FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_pad_value_dtype[shape=(30, 62)-ttnn_dtype=DataType.INT32-pad_value=0] - worker 'gw12' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_pad_value_dtype[shape=(30, 62)-ttnn_dtype=DataType.INT32-pad_value=0]'
+17825: FAILED tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_with_unpadding_2D[W=64-H=32-use_multicore=True-in_dtype=DataType.BFLOAT16] - worker 'gw2' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_with_unpadding_2D[W=64-H=32-use_multicore=True-in_dtype=DataType.BFLOAT16]'
+17826: FAILED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=32-H=480-C=7-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B] - worker 'gw13' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=32-H=480-C=7-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B]'
+17827: FAILED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=10-W=32-H=128-C=1-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B] - worker 'gw14' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=10-W=32-H=128-C=1-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B]'
+17828: FAILED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=416-H=128-C=7-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B] - worker 'gw15' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=416-H=128-C=7-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B]'
+17829: FAILED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=3-i_h=20-W=32-H=128-C=1-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B] - worker 'gw17' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=3-i_h=20-W=32-H=128-C=1-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B]'
+17830: FAILED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=32-H=480-C=7-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B] - worker 'gw16' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=20-W=32-H=480-C=7-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B]'
+17831: FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_int_untilize[sentence_size=256-batch_size=9] - worker 'gw19' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_int_untilize[sentence_size=256-batch_size=9]'
+17832: FAILED tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=3-i_h=20-W=416-H=480-C=7-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B] - worker 'gw18' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=3-i_h=20-W=416-H=480-C=7-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B]'
+17833: FAILED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_untilize_with_unpad_int32[dtype=DataType.UINT32-shape=[32, 128]] - worker 'gw11' crashed while running 'tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_untilize_with_unpad_int32[dtype=DataType.UINT32-shape=[32, 128]]'
+17834: !!!!!!!!!!!!!!!!!!!!!!!!!! stopping after 20 failures !!!!!!!!!!!!!!!!!!!!!!!!!!
+17835: = 20 failed, 4818 passed, 598 skipped, 21 xfailed, 22 warnings in 1023.90s (0:17:03) =
+17836: ##[warning]Parallel run failed. Re-running failed tests serially for clear diagnostics...
+17837: ============================= test session starts ==============================
+17838: platform linux -- Python 3.10.19, pytest-9.0.3, pluggy-1.6.0 -- /opt/venv/bin/python3
+17839: cachedir: .pytest_cache
+17840: benchmark: 5.2.3 (defaults: timer=time.perf_counter disable_gc=False min_rounds=5 min_time=0.000005 max_time=1.0 calibration_precision=10 warmup=False warmup_iterations=100000)
+17841: rootdir: /work
+
+============================================================
+DEDUPLICATED WARNINGS (showing count)
+============================================================
+  [59x] | warning  |           Metal | Dispatch telemetry SMC buffer unavailable (no firmware info provider,...
+  [33x] | WARNING  | tests.scripts.common:get_updated_device_params:278 - ROW dispatch requires both fabric ...
+  [28x] ##[warning]Unknown config option: timeout...
+  [28x] PASSED | warning  |           Metal | Dispatch telemetry SMC buffer unavailable (no firmware info pr...
+  [18x] /work/ttnn/cpp/ttnn/operations/matmul/device/kernels/compute/bmm_large_block_zm_fused_bias_activatio...
+  [17x] | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_failed_c...
+  [17x] | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_dispatch...
+  [17x] | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_async_sd...
+  [17x] | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_pre_oper...
+  [17x] | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:49 - Skipping <Function test_operatio...
+
+============================================================
+FAILED TESTS (20 found)
+============================================================
+  - tests/ttnn/unit_tests/base_functionality/test_concat_issue.py::test_5d_concat_tile[layout=Layout.TILE]
+  - tests/ttnn/unit_tests/base_functionality/test_expand.py::test_expand[dtype=DataType.BFLOAT16-tensor_layout=Layout.TILE-input_shape=(1,
+  - tests/ttnn/unit_tests/base_functionality/test_expand.py::test_expand[dtype=DataType.BFLOAT16-tensor_layout=Layout.TILE-input_shape=(4,
+  - tests/ttnn/unit_tests/base_functionality/test_roll.py::test_roll[input_tensor=[[[0,
+  - tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_untilize_with_unpadding_2D[W=64-H=32-use_multicore=True-in_dtype=DataType.BFLOAT16]
+  - tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_int_untilize[sentence_size=256-batch_size=9]
+  - tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_int_untilize[sentence_size=32-batch_size=9]
+  - tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_2D[start_with_padding=False-to_layout=Layout.ROW_MAJOR-from_layout=Layout.TILE-on_device=True-width=32-height=30]
+  - tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_bfloat8_b_to_bfloat16[shape=(30,
+  - tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_hangs[output_layout=Layout.ROW_MAJOR-input_layout=Layout.TILE-shape=[3,
+  - tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_pad_value_dtype[shape=(30,
+  - tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_subcore[sub_core_grids=None-output_layout=Layout.ROW_MAJOR-input_layout=Layout.TILE-w=1-h=1]
+  - tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_untilize_with_unpad_int32[dtype=DataType.UINT32-shape=[32,
+  - tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=10-W=32-H=128-C=1-N=1-use_multicore=True-in_dtype=DataType.BFLOAT8_B]
+  - tests/ttnn/unit_tests/base_functionality/test_untilize_bfloat8_b.py::test_untilize_with_unpadding[i_w=2-i_h=10-W=32-H=128-C=1-N=2-use_multicore=True-in_dtype=DataType.BFLOAT8_B]
+  ... and 5 more
+
+============================================================
+FINAL STATUS
+============================================================
+(no final status found)
+
+[OUTCOME: CRASHED - job did not complete]
+[Extracted 469/18650 lines]
+
+## YOUR TASK
+Analyze the log and return a JSON object with these fields:
+
+```json
+{
+  "status": "CRASH",  // must be exactly one of: CRASH, TESTS_FAILED, EVALS_BELOW_TARGET, SUCCESS
+
+  "category": "<category_id or UNKNOWN>",
+  "subcategory": "<specific sub-type if applicable>",
+  "unknown_pattern": "<if UNKNOWN, the error pattern you found>",
+
+  "layer": "<driver|framework|operations|model|serving|application>",
+  "problematic_layer": "<layer that CAUSED the error, may differ from layer where it manifested>",
+  "file": "<specific file if identifiable>",
+
+  "is_your_code": <true|false|null>,
+  "pr_files_in_stack": ["<list of PR files that appear in stack trace>"],
+
+  "root_cause": "<1-2 sentence description of what went wrong>",
+  "error_message": "<single line - the exact error message to search for in logs>",
+  "failed_tests": ["<list of failed test names>"],
+
+  "suggested_action": "<SHORT action - what to do>",
+  "confidence": "<high|medium|low>"
+}
+```
+
+IMPORTANT:
+- Set `status` to one of exactly these values:
+  * CRASH: The process itself failed — server startup error, TT_FATAL, exception, import error, argparse error, OOM kill. No tests ran.
+  * TESTS_FAILED: The server started and ran, but one or more tests failed with actual test failures.
+  * EVALS_BELOW_TARGET: The server ran and tests passed, but eval accuracy/benchmark scores are below target thresholds.
+  * SUCCESS: Everything passed.
+  NOTE: if the server failed to start (argparse error, import error, health check never passed), use CRASH — not TESTS_FAILED — even if "workflow:benchmarks" or "workflow:evals" appear as failed in the log. Those are downstream timeouts, not real test failures.
+- ERROR PRECEDENCE - Root causes vs symptoms:
+  * Server startup failures (argparse errors like "unrecognized arguments", import errors, config parsing errors) are ROOT CAUSES
+  * Health check timeouts ("did not become healthy within Xs") are SYMPTOMS of the server not starting
+  * Connection refused errors are SYMPTOMS of the server not running
+  * Always identify the EARLIEST error that caused the cascade - if server failed to start, that's the root cause, not the timeout
+  * Error Section 1 in the log is typically the earliest/primary error
+- If the job completed and only evals failed, do NOT report warnings or info messages as the error - report the actual eval failures
+- Set is_your_code to true ONLY if files from the PR/branch appear in the error stack trace
+- Set is_your_code to false if the error is in infrastructure/framework code
+- Set is_your_code to null if you can't determine
+- If the category is UNKNOWN, make sure to fill unknown_pattern so we can add it later
+- Be specific in root_cause - include device IDs, timeouts, specific error codes when relevant
+- Keep suggested_action SHORT but SPECIFIC - include actual parameter names and example values when applicable
+- error_message must be a SINGLE LINE that can be searched in the log
+- Set problematic_layer to the layer that SET the config causing the error (e.g., if max_model_len from serving layer caused a framework crash, problematic_layer="serving")
+- When suggesting fixes for config parameters, USE THE CONFIGURATION CONTEXT above to determine the correct way to set parameters (e.g., use override_tt_config instead of environment variables if that's how other runs configure it)
+
+REQUIRED: `status` must be exactly one of: "CRASH", "TESTS_FAILED", "EVALS_BELOW_TARGET", "SUCCESS". No other values are valid.
+
+Return ONLY the JSON object, no other text.
