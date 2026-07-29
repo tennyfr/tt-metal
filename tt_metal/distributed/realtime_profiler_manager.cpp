@@ -1163,7 +1163,9 @@ void RealtimeProfilerManager::on_callback_unregistered(tt::ProgramRealtimeProfil
 RealtimeProfilerManager::~RealtimeProfilerManager() { shutdown(); }
 
 void RealtimeProfilerManager::shutdown() {
+    // Ceiling on how long we wait for the push kernel to drain, not a fixed cost: see the poll below.
     constexpr auto kShutdownKernelExitGrace = std::chrono::milliseconds(100);
+    constexpr auto kShutdownKernelExitPollBackoff = std::chrono::microseconds(50);
     MetalContext::instance(context_id_).data_collector()->DetachRealtimeProfilerCallbackListener(this);
 
     // Re-write ring_buffer->terminate as a safety net, then let the push kernel deliver the last PCIe page.
@@ -1188,8 +1190,61 @@ void RealtimeProfilerManager::shutdown() {
             }
         }
     }
-    if (!devices_.empty()) {
-        std::this_thread::sleep_for(kShutdownKernelExitGrace);
+    // Wait for the push kernel to hand its last PCIe page over, then exit. The kernel drains the ring and
+    // returns as soon as it observes terminate with an empty ring, and it bumps read_index only after the
+    // page's write barrier has retired, so read_index == write_index means everything has landed in the host
+    // ring. That takes microseconds, so poll for it rather than sleeping the whole grace period on every
+    // device close: this path runs once per close_device, and a fixed sleep here shows up as a flat ~100 ms
+    // tax on every test in suites whose `device` fixture is function-scoped.
+    for (auto& dev_state : devices_) {
+        if (dev_state.core_l1.ring_buffer == 0 || !dev_state.device) {
+            continue;
+        }
+        const uint32_t indices_addr = dev_state.core_l1.ring_buffer + offsetof(RtProfilerRingBuffer, write_index);
+        static_assert(
+            offsetof(RtProfilerRingBuffer, read_index) ==
+                offsetof(RtProfilerRingBuffer, write_index) + sizeof(uint32_t),
+            "write_index and read_index must be adjacent to be read in one shot");
+        const auto deadline = std::chrono::steady_clock::now() + kShutdownKernelExitGrace;
+        bool drained = false;
+        while (true) {
+            std::vector<uint32_t> indices(2, 0);
+            try {
+                tt::tt_metal::detail::ReadFromDeviceL1(
+                    dev_state.device,
+                    dev_state.realtime_profiler_core,
+                    indices_addr,
+                    2 * sizeof(uint32_t),
+                    indices,
+                    CoreType::WORKER);
+            } catch (const std::exception& e) {
+                log_warning(
+                    tt::LogMetal,
+                    "[Real-time profiler] Failed to read ring indices while draining device {}: {}",
+                    dev_state.chip_id,
+                    e.what());
+                break;
+            }
+            if (indices[0] == indices[1]) {
+                drained = true;
+                break;
+            }
+            if (std::chrono::steady_clock::now() >= deadline) {
+                log_warning(
+                    tt::LogMetal,
+                    "[Real-time profiler] Device {} push kernel did not drain within {} ms "
+                    "(write_index={}, read_index={}); trailing records may be lost",
+                    dev_state.chip_id,
+                    std::chrono::duration_cast<std::chrono::milliseconds>(kShutdownKernelExitGrace).count(),
+                    indices[0],
+                    indices[1]);
+                break;
+            }
+            std::this_thread::sleep_for(kShutdownKernelExitPollBackoff);
+        }
+        if (drained) {
+            log_debug(tt::LogMetal, "[Real-time profiler] Device {} push kernel drained", dev_state.chip_id);
+        }
     }
 
     if (receiver_thread_.joinable()) {
