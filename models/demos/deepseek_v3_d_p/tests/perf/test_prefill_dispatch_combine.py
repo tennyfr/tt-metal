@@ -43,46 +43,36 @@ from models.demos.deepseek_v3_d_p.tt.moe.tt_dispatch import TtDispatchModule
 # Geometry of the replay, not of any model: LB 8x1 stands in for ONE column of the Galaxy the
 # capture was taken on, which has 4 columns of 8 chips.
 GALAXY_NUM_DISPATCH_GROUPS = 4
-LB_DISPATCH_GROUP_SIZE = 8
+DISPATCH_GROUP_SIZE = 8
 CHUNK = 5 * 1024  # tokens per chunk in the chunked-prefill run the captures come from
 DISPATCH_BUFFER_CAPACITY_FACTOR = 8
 
 
-def _chunk_case(model, model_config):
-    """Worker config for replaying one chunk of `model`'s chunked-prefill capture on LB 8x1.
-
-    Everything model-specific is read off the reference config, so a model's expert count or
-    embedding size is stated in exactly one place. Derived here:
-
-        seq_len_per_chip        one chunk spread over the dispatch group   (5120/8 = 640)
-        experts_per_chip        the column's experts split across 8 chips
-                                (dsv3 256/4/8 = 8, kimi26 384/4/8 = 12)
-        capture_key_prefix      the model's namespace in the shared capture  ("dsv3_")
-        parametrize id          what test_dispatch_combine_perf selects with -k
-
-    `model` is the one name for all three, so the perf test can build the id itself. No id may be a
-    prefix of another: the perf test filters workers with `-k "<id> and ..."` and -k matches
-    substrings, so an overlapping id would silently pull in the wrong entry too.
-    """
-    experts_per_col = model_config.NUM_ROUTED_EXPERTS // GALAXY_NUM_DISPATCH_GROUPS
-    return pytest.param(
-        CHUNK // LB_DISPATCH_GROUP_SIZE,
-        model_config.EMB_SIZE,
-        model_config.NUM_ROUTED_EXPERTS,
-        model_config.NUM_EXPERTS_PER_TOKEN,
-        DISPATCH_BUFFER_CAPACITY_FACTOR,
-        experts_per_col // LB_DISPATCH_GROUP_SIZE,
-        f"{model}_",
-        id=f"perf_captured_{model}_chunk",
-    )
+# One entry per model whose chunked-prefill capture we replay; add a model by extending this list.
+_CHUNK_MODELS = [("dsv3", DeepSeekV3Config), ("kimi26", KimiK26Config)]
 
 
+# One chunk (5120 tokens) spread over the 8-chip dispatch group => seq_len_per_chip 640. Expert
+# count / embedding size come off each reference config, so they live in one place;
+# experts_per_chip = experts_per_col / 8 (dsv3 256/4/8 = 8, kimi26 384/4/8 = 12), and
+# capture_key_prefix is the model's namespace in the shared capture. The parametrize id is what
+# test_dispatch_combine_perf selects with `-k "<id> and ..."`; since -k matches substrings, no id
+# may be a prefix of another or it would silently pull in the wrong entry too.
 @pytest.mark.parametrize(
     "seq_len_per_chip, emb_dim, num_routed_experts, num_experts_per_tok, "
     "dispatch_buffer_capacity_factor, experts_per_chip_override, capture_key_prefix",
     [
-        _chunk_case("dsv3", DeepSeekV3Config),
-        _chunk_case("kimi26", KimiK26Config),
+        pytest.param(
+            CHUNK // DISPATCH_GROUP_SIZE,
+            cfg.EMB_SIZE,
+            cfg.NUM_ROUTED_EXPERTS,
+            cfg.NUM_EXPERTS_PER_TOKEN,
+            DISPATCH_BUFFER_CAPACITY_FACTOR,
+            cfg.NUM_ROUTED_EXPERTS // GALAXY_NUM_DISPATCH_GROUPS // DISPATCH_GROUP_SIZE,
+            f"{model}_",
+            id=f"perf_captured_{model}_chunk",
+        )
+        for model, cfg in _CHUNK_MODELS
     ],
 )
 @pytest.mark.parametrize(
