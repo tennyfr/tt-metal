@@ -29,9 +29,9 @@ _REAL_INDICES_TOPOS = [("linear", 2), ("ring", 2)]
 # One chunk per case: 5120 tokens over the 8-chip dispatch group => seq_len_per_chip 640, hence the
 # worker's perf_captured_*_chunk entries.
 #
-# TT_DS_USE_CAPTURED_INDICES (read by the worker, inherited from the environment) is the
-# expert_routing.safetensors holding BOTH models' cases, keyed by model. The test is parametrized
-# per model and the worker slices that model's tensors out of the file.
+# TT_DS_USE_CAPTURED_INDICES (read by the worker, inherited from the environment) points at
+# expert_routing_dispatch_combine_perf.safetensors, which holds BOTH models' cases keyed by model. The
+# test is parametrized per model and the worker slices that model's tensors out of the file.
 #
 # A pick contributes a test only once its baselines are filled in, so this is inert by default: the
 # 75W box the captures came from cannot produce valid perf numbers, and nothing is asserted against

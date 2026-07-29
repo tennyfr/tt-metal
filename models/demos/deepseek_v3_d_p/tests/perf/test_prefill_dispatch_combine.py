@@ -13,8 +13,9 @@ one CSV; the perf wrapper asserts each independently.
 Required env vars (set by the parent perf test via extra_env):
     TT_DS_CAPTURED_LAYER          int, MoE layer index
     TT_DS_CAPTURED_COL            int, Galaxy column [0, 4)
-    TT_DS_USE_CAPTURED_INDICES    expert_routing.safetensors holding the chunked-prefill capture
-                                  for every model (required; no default capture)
+    TT_DS_USE_CAPTURED_INDICES    path to expert_routing_dispatch_combine_perf.safetensors, the
+                                  chunked-prefill capture holding every model's cases
+                                  (required; there is no default capture)
 """
 
 import os
