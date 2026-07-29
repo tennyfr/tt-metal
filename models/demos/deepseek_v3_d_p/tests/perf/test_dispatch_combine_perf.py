@@ -156,7 +156,7 @@ def test_device_perf_dispatch_combine(
 ):
     # Skip the Kimi perf test in CI; only DSv3 is gated for now.
     if is_ci_env and "kimi26" in model_name:
-        pytest.skip("Kimi dispatch/combine perf is not part of the CI gate")
+        pytest.skip("Only perf test for DeepSeek V3 in CI")
     run_model_device_perf_test_per_op(
         command=command,
         expected_per_op=expected_per_op,
