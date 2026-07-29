@@ -321,6 +321,9 @@ plan::PlanResult make_and_build_plan(
     if (const char* e = std::getenv("TT_REGIME_A_DIAG_MASK")) {
         const long dm = std::strtol(e, nullptr, 10);
         in.reduce_meet = (dm & 0x100000L) != 0L;
+        if (in.reduce_meet) {
+            in.cb7_depth = 4u;  // a meet root pushes 2 blocks per sub-block, double buffered
+        }
         const long sel = (dm >> 18) & 0x3L;
         if (sel == 1L) {
             in.cb7_depth = 4u;

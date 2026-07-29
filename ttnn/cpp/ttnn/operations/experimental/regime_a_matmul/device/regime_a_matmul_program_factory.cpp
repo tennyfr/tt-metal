@@ -1222,8 +1222,12 @@ RegimeAMatmulProgramFactory::cached_program_t RegimeAMatmulProgramFactory::creat
             wdefs["SKIP_OUTPUT_WRITE"] = "1";
         }
         if (diag_mask & 0x100000u) {
-            wdefs["REDUCE_MEET"] = "1";
-            ddefs_compute["REDUCE_MEET"] = "1";
+            // bit20 (meet-in-the-middle reduction) DEADLOCKS. Two independent attempts at its credit/slot
+            // protocol both hung the device, so the path is disabled rather than left as a trap. It was also
+            // never validly measured: the env-mask limit silently clamped values above 0x1FFFF to 0, so both
+            // A/B arms aliased onto one cached program and the earlier "correct, zero gain" result was
+            // meaningless. Re-enable only with a fresh protocol design and watcher-backed validation.
+            TT_THROW("regime_a_matmul diag bit20 (REDUCE_MEET) is disabled: it deadlocks. See HYPEROPT_LOG.md F6.");
         }
         if (diag_mask & 0x40u) {
             wdefs["FWD_NEAR"] = "1";
@@ -1339,9 +1343,7 @@ RegimeAMatmulProgramFactory::cached_program_t RegimeAMatmulProgramFactory::creat
     mkcb(program, all_cores, 2, cb.cb2_tiles, tt::DataFormat::Float16_b, kTileBytesBf16);  // out
     mkcb(program, all_cores, 3, cb.cb3_tiles, tt::DataFormat::Float32, kTileBytesFp32);    // fp32 intermediate
     if (cb.cb7_tiles > 0u) {
-        // meet-in-the-middle: the root holds two channels x two phases, so it needs 4 blocks, not 2.
-        const uint32_t cb7 = diag_reduce_meet ? (2u * cb.cb7_tiles) : cb.cb7_tiles;
-        mkcb(program, all_cores, 7, cb7, tt::DataFormat::Float16_b, kTileBytesBf16);  // reduce (Pk>1 only)
+        mkcb(program, all_cores, 7, cb.cb7_tiles, tt::DataFormat::Float16_b, kTileBytesBf16);  // reduce (Pk>1)
     }
     // Fused-epilogue operand CBs (only when the matching fusion is active). c_4 bias [1,N_sub], c_5 residual
     // [M,N] block, c_6 gate [1,N_sub] (broadcast) or [M,N] block. Sized to hold a full sub-block so the
@@ -1360,11 +1362,7 @@ RegimeAMatmulProgramFactory::cached_program_t RegimeAMatmulProgramFactory::creat
 
     // ---- Semaphores ----
     const uint32_t fwd_sem = CreateSemaphore(program, all_cores, 0u);      // in0 ring recv
-    const uint32_t red_sem = CreateSemaphore(program, all_cores, 0u);   // reduction recv (channel 0)
-    // Channel-1 receive semaphore for the meet-in-the-middle root. Created IMMEDIATELY after red_sem so the
-    // kernel can address it as red_sem_id + 1 without another compile arg (which would shift the accessors).
-    const uint32_t red_sem2 = CreateSemaphore(program, all_cores, 0u);
-    (void)red_sem2;
+    const uint32_t red_sem = CreateSemaphore(program, all_cores, 0u);      // reduction recv (shared counter)
     const uint32_t redfree_sem = CreateSemaphore(program, all_cores, 0u);  // cb_reduce reverse credit
     uint32_t in1valid_sem = 0u, in1ready_sem = 0u;                         // M-split reader<->slaves
     if (Sm > 1u) {
@@ -1623,12 +1621,13 @@ RegimeAMatmulProgramFactory::cached_program_t RegimeAMatmulProgramFactory::creat
         // DESTINATION root, which is what decides the slot stride the sender must use.
         if (diag_reduce_meet) {
             const auto p2 = phys(cp.red_prev2_idx);
-            const uint32_t dest_slots = P.cores[cp.red_next_idx].red_nrecv;
+            const uint32_t dn = P.cores[cp.red_next_idx].red_nrecv;
             wa.push_back(cp.red_nrecv);
-            wa.push_back(cp.red_channel);
+            wa.push_back(cp.red_send_ord);
             wa.push_back(p2.x);
             wa.push_back(p2.y);
-            wa.push_back(dest_slots == 0u ? 1u : dest_slots);
+            wa.push_back(dn == 0u ? 1u : dn);  // inputs at my destination (1 for a plain chain link)
+            wa.push_back(use_reduce);          // cb_reduce depth in blocks == its actual slot count
         }
         SetRuntimeArgs(program, wh, cores[i], wa);
 

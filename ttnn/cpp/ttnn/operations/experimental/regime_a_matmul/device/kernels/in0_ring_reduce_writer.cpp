@@ -235,11 +235,12 @@ void kernel_main() {
     // red_prev, channel 1 uses red_sem2 / red_prev2, so the two arrivals can never be confused for each other
     // (a single shared counter would be fungible and is exactly what corrupted earlier reduction work). ----
 #if defined(REDUCE_MEET)
-    const uint32_t red_nrecv = get_arg_val<uint32_t>(kDiagBase2);
-    const uint32_t red_channel = get_arg_val<uint32_t>(kDiagBase2 + 1);
+    const uint32_t red_nrecv = get_arg_val<uint32_t>(kDiagBase2);      // my incoming partials (0, 1 or 2)
+    const uint32_t red_send_ord = get_arg_val<uint32_t>(kDiagBase2 + 1);  // my ordinal at my destination
     const uint32_t red_prev2_x = get_arg_val<uint32_t>(kDiagBase2 + 2);
     const uint32_t red_prev2_y = get_arg_val<uint32_t>(kDiagBase2 + 3);
-    const uint32_t red_slots = get_arg_val<uint32_t>(kDiagBase2 + 4);  // channels at my DESTINATION root
+    const uint32_t red_dest_nrecv = get_arg_val<uint32_t>(kDiagBase2 + 4);  // inputs my DESTINATION has
+    const uint32_t red_cb_slots = get_arg_val<uint32_t>(kDiagBase2 + 5);    // cb_reduce depth in blocks
 #endif
 
     // ---- PHASE 1: in0 ring all-gather (balanced tails: read only valid M rows / valid K, else zero) ----
@@ -340,9 +341,9 @@ void kernel_main() {
     const uint32_t reduce_base = get_write_ptr(cb_reduce);
     const uint32_t red_addr = get_semaphore(red_sem_id);
 #if defined(REDUCE_MEET)
-    // channel-1 semaphore. The factory creates it immediately after red_sem, so the id is red_sem_id + 1.
-    const uint32_t red2_addr = get_semaphore(red_sem_id + 1u);
-    volatile tt_l1_ptr uint32_t* red2_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(red2_addr);
+    // ONE shared receive counter is sufficient: a root waits for the TOTAL number of arrivals for this
+    // sub-block (nrecv per nb), not for a specific one, and the two senders write to DIFFERENT slots decided
+    // by their ordinal. So there is no fungibility problem and no second semaphore.
     const uint64_t prev2_redfree = get_noc_addr(red_prev2_x, red_prev2_y, get_semaphore(redfree_sem_id));
 #endif
     volatile tt_l1_ptr uint32_t* red_ptr = reinterpret_cast<volatile tt_l1_ptr uint32_t*>(red_addr);
@@ -376,13 +377,16 @@ void kernel_main() {
         cb_pop_front(out_cb, out_blk);
 #else
 #if defined(REDUCE_MEET)
-        // Receive red_nrecv partials, channel 0 first then channel 1, pushing each as it lands. Compute adds
-        // them in the same order, so the CB FIFO position of each push matches the slot the sender wrote.
-        for (uint32_t c = 0; c < red_nrecv; ++c) {
-            cb_reserve_back(cb_reduce, out_blk);
-            noc_semaphore_inc(c == 0u ? prev_redfree : prev2_redfree, 1);
-            noc_semaphore_wait_min(c == 0u ? red_ptr : red2_ptr, nb + 1);
-            cb_push_back(cb_reduce, out_blk);
+        // Return a credit to each predecessor, then wait for ALL of this sub-block's partials to land, then
+        // push them in ordinal order. Pushing only after every arrival is what lets one counter serve both.
+        if (red_nrecv > 0u) {
+            cb_reserve_back(cb_reduce, red_nrecv * out_blk);
+            noc_semaphore_inc(prev_redfree, 1);
+            if (red_nrecv > 1u) {
+                noc_semaphore_inc(prev2_redfree, 1);
+            }
+            noc_semaphore_wait_min(red_ptr, (nb + 1) * red_nrecv);
+            cb_push_back(cb_reduce, red_nrecv * out_blk);
         }
 #else
         if (!is_bottom) {
@@ -402,9 +406,10 @@ void kernel_main() {
         if (!is_top) {
             noc_semaphore_wait_min(redfree_ptr, nb + 1);  // next signalled its slot is free
 #if defined(REDUCE_MEET)
-            // slot = (nb % 2) * channels_at_destination + my channel, so the two senders never collide and the
-            // destination's FIFO order (channel 0 then channel 1, per nb) matches these offsets exactly.
-            const uint32_t red_slot = (nb % 2u) * red_slots + red_channel;
+            // My destination pushes red_dest_nrecv blocks per sub-block in ordinal order, so the FIFO slot for
+            // (nb, my ordinal) is exactly this. Both senders to a root therefore target distinct slots, and a
+            // single-input receiver gets the plain nb-indexed slot.
+            const uint32_t red_slot = (nb * red_dest_nrecv + red_send_ord) % red_cb_slots;
             uint64_t dst = get_noc_addr(red_next_x, red_next_y, reduce_base + red_slot * out_blk_bytes);
 #else
             uint64_t dst = get_noc_addr(red_next_x, red_next_y, reduce_base + (nb % red_depth) * out_blk_bytes);
@@ -414,8 +419,7 @@ void kernel_main() {
             // the receiver never observes readiness before its partial-sum has landed. Flush (not a full
             // barrier) so the out_cb source slot is reusable; completion is deferred to the final barrier.
 #if defined(REDUCE_MEET)
-            noc_semaphore_inc(
-                get_noc_addr(red_next_x, red_next_y, red_channel == 0u ? red_addr : red2_addr), 1);
+            noc_semaphore_inc(get_noc_addr(red_next_x, red_next_y, red_addr), 1);
 #else
             noc_semaphore_inc(next_recv, 1);  // block nb delivered (ordered after the payload write)
 #endif

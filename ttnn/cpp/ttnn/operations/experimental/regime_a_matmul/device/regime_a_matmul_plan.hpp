@@ -195,7 +195,7 @@ struct CorePlan {
     // is about Pk/2. The root then has TWO incoming partials, distinguished by CHANNEL (0 = from below,
     // 1 = from above) with a separate semaphore each, and consumed sequentially.
     uint32_t red_nrecv{1};      // incoming partials: 0 at a chain end, 1 normally, 2 at a meet root
-    uint32_t red_channel{};     // which channel THIS core sends on (0 = upward, 1 = downward)
+    uint32_t red_send_ord{};    // MY ordinal among my destination's inputs (0, or 1 for the root's down input)
     uint32_t red_prev2_idx{};   // the root's second predecessor (only when red_nrecv == 2)
 };
 
@@ -420,7 +420,7 @@ inline PlanResult build_plan(const PlanInputs& in) {
             const bool has_down = (Pk - 1u) > root_kk;  // is there a downward chain above the root?
             cp.is_top = (kk == root_kk);
             cp.is_bottom = (kk == 0u) || (has_down && kk == Pk - 1u);
-            cp.red_channel = (kk > root_kk) ? 1u : 0u;
+            cp.red_send_ord = (in.reduce_meet && kk == root_kk + 1u && has_down) ? 1u : 0u;
             if (cp.is_top) {
                 cp.red_next_idx = i;
                 cp.red_nrecv = has_down ? 2u : 1u;
@@ -439,7 +439,7 @@ inline PlanResult build_plan(const PlanInputs& in) {
                 cp.red_prev_idx = i;
                 cp.red_prev2_idx = i;
                 cp.red_nrecv = 0u;
-                cp.red_channel = 0u;
+                cp.red_send_ord = 0u;
             }
 
             plan.cores[i] = cp;

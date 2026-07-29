@@ -493,6 +493,62 @@ Resolving that specific residual is the only remaining lever, and it needs per-R
 knob (config, buffer depths, placement, ring order, reduction topology, subblock shape) has now been measured
 and closed.
 
+## CORRECTION: four experiments were invalid (diagnostic cache aliasing)
+
+The env-var parse silently DROPPED any mask above 0x1FFFF (131071): `if (v > 0 && v <= 0x1FFFF)` left
+`diag_mask` at 0. Several later knobs (placement targets, CB depths, reduction topology) are ALSO read from the
+same env var inside the planner, so those still changed the program while the hashed `diag_mask` - and hence
+the program-cache key - stayed 0. Two different masks therefore aliased onto ONE cached program, and the second
+arm of each A/B silently re-ran the first arm.
+
+All bits up to 16 are unaffected, so **everything shipped and every stage ablation is valid** (max mask used
+there was 65536). The four experiments using bits 17-21 were not:
+
+| experiment | masks | was it valid? |
+|---|---|---|
+| mesh + gate fits, subblock, all stage ablations, in1 placement, ring order, D1 | <= 65536 | VALID |
+| F4 placement targets | 131072 | invalid |
+| F5 reduction-CB depth | 262144 / 524288 | invalid |
+| F6 meet-in-the-middle reduction | 1048576 | invalid |
+| F7 M-split forward | 2097152 | invalid |
+
+Fixed by making an out-of-range mask a hard error instead of a silent clamp - verified it now rejects
+99999999 - so this class of mistake cannot recur.
+
+### Re-run results
+
+**F4 (placement targets) - the conclusion CHANGES.** It is not neutral. Using the NOC_0 assignment for both
+NoCs, which is what ships, is clearly better on one shape and mildly better on others:
+
+| shape | shipped (opt0 both) | true per-NoC | shipped is |
+|---|---|---|---|
+| 128x6144x4608 | 125.05 | 146.96 | **14.9% faster** |
+| 32x6144x1536 | 40.53 | 41.09 | 1.4% faster |
+| 512x6144x2304 | 109.72 | 110.14 | 0.4% faster |
+| 256x2048x2048 | 39.04 | 39.09 | 0.1% faster |
+| 256x6144x4608 | 143.59 | 143.40 | 0.1% slower |
+
+So the shipped choice is right and now actually justified by data, for the reason predicted: a NOC_1 read
+response leaving a DRAM column wraps most of the way round the torus, so the API's NOC_1 "optimal" worker is a
+poor target.
+
+**F5 (reduction-CB depth) - conclusion unchanged.** Depth 4 and 8 give +0.1% to +0.5% (noise). Buffering is
+still not the reduction's cost.
+
+**F7 (M-split forward) - conclusion essentially unchanged.** The forward payload costs -0.0%, +1.4%, -0.6%.
+Still not worth a read-ahead redesign.
+
+**F6 (meet-in-the-middle reduction) - conclusion REVERSED, and it is worse than useless.** With the bit
+actually taking effect, the topology **deadlocks**: it hung the device twice and needed a `tt-smi -r` both
+times. So the earlier "correct, zero gain" claim was an artifact of the bit never taking effect. Two attempts
+at the credit/slot protocol both hung, so the path is now hard-disabled with an explicit throw rather than
+left as a trap. What we know remains true is only the SIZING (from valid masks 32/48): the reduction chain
+costs 14.3% on 512x6144x2304 and 9.2% on 512x6144x4608. Whether shortening its depth helps is **unknown and
+untested** - the fan-in-2 tree and reduce-scatter reasoning I wrote off on the basis of F6 should be treated as
+OPEN again.
+
+111/111 correctness tests pass after all of this.
+
 ## Total progress this session
 
 | shape | at log start | now | change |

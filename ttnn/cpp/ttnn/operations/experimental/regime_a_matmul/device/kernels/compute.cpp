@@ -543,12 +543,11 @@ void kernel_main() {
                 // Fold all but the last incoming partial into the accumulator in place, then fold the last one
                 // straight into out_cb. Same total arithmetic as the linear chain, just a different order, so
                 // the result is PCC-equal but not bit-identical (float addition is not associative).
+                cb_wait_front(cb_reduce, red_nrecv * out_block_num_tiles);
                 for (uint32_t c = 0; c + 1u < red_nrecv; ++c) {
-                    cb_wait_front(cb_reduce, out_block_num_tiles);
                     reduce_add_in_place(intermediate_cb, cb_reduce, M_block_tiles, N_block_tiles);
                     cb_pop_front(cb_reduce, out_block_num_tiles);
                 }
-                cb_wait_front(cb_reduce, out_block_num_tiles);
                 reduce_add_block(intermediate_cb, cb_reduce, out_cb, M_block_tiles, N_block_tiles);
                 cb_pop_front(cb_reduce, out_block_num_tiles);
             }
