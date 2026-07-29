@@ -3,11 +3,11 @@
 // SPDX-License-Identifier: Apache-2.0
 #pragma once
 
-#define TT_ALWAYS_INLINE    inline __attribute__((always_inline))
-#define NOINLINE            __attribute__((noinline))
-#define NOCLONE             __attribute__((noclone))
-#define tt_l1_ptr           __attribute__((rvtt_l1_ptr))
-#define tt_reg_ptr          __attribute__((rvtt_reg_ptr))
+#define TT_ALWAYS_INLINE inline __attribute__((always_inline))
+#define NOINLINE         __attribute__((noinline))
+#define NOCLONE          __attribute__((noclone))
+#define tt_l1_ptr        __attribute__((rvtt_l1_ptr))
+#define tt_reg_ptr       __attribute__((rvtt_reg_ptr))
 #include <cstdint>
 
 #include "ckernel_addrmod.h"
@@ -37,10 +37,10 @@ constexpr std::uint8_t TENSIX_PERF_SEMAPHORE = p_stall::SEMAPHORE_2;
 constexpr std::uint8_t MATH_SEMAPHORE        = 1;
 constexpr std::uint8_t PC_BUF_SEMAPHORE_BASE = 32; // base address for semaphores in PC buffer. FIXME: must be kept in sync with SEM_COUNT parameter... ugly...
 constexpr std::uint8_t STREAM_SEMAPHORE      = 5;  // semaphore used by unpack thread to sync between trisc and unpacker
-constexpr std::uint8_t TENSIX_STREAM_SEMAPHORE                = p_stall::SEMAPHORE_5; // semaphore used by unpack thread to sync between trisc and unpacker
-constexpr std::uint8_t PARAM_ITERATIONS                       = 0;
-constexpr std::uint8_t TENSIX_PACK_STREAM_SEMAPHORE           = p_stall::SEMAPHORE_6;
-constexpr std::uint8_t PACK_STREAM_SEMAPHORE                  = 6;
+constexpr std::uint8_t TENSIX_STREAM_SEMAPHORE      = p_stall::SEMAPHORE_5; // semaphore used by unpack thread to sync between trisc and unpacker
+constexpr std::uint8_t PARAM_ITERATIONS             = 0;
+constexpr std::uint8_t TENSIX_PACK_STREAM_SEMAPHORE = p_stall::SEMAPHORE_6;
+constexpr std::uint8_t PACK_STREAM_SEMAPHORE        = 6;
 
 volatile std::uint32_t *const reg_base        = (volatile std::uint32_t *)0xFFB10000;
 volatile std::uint32_t *const pc_buf_base     = (volatile std::uint32_t *)PC_BUF_BASE;
@@ -250,16 +250,34 @@ inline void cfg_rmw(std::uint32_t cfg_addr32, std::uint32_t cfg_shamt, std::uint
 // 	TTI_WRCFG(tmp_gpr2,p_cfg::WRCFG_32b,cfg_addr32);
 // }
 
+// STOREREG/LOADREG address mailbox registers as a 32-bit-word index relative to LOCAL_REGS_BASE
+// (see assembly.yaml: RegAddr = "Word index... relative to LOCAL_REGS_BASE").
+inline std::uint32_t mailbox_reg_addr(const std::uint8_t thread)
+{
+    return (reinterpret_cast<std::uint32_t>(mailbox_base[thread]) - LOCAL_REGS_BASE) >> 2;
+}
+
 // CHECKME: does this need to change now that BRISC is gone?
 inline void mailbox_write(const std::uint8_t thread, const std::uint32_t data)
 {
-    mailbox_base[thread][0] = data;
+    const std::uint32_t reg_addr = mailbox_reg_addr(thread);
+
+    // SETGPR the 32-bit payload into a scratch GPR (low/high 16b halves), then STOREREG GPR -> mailbox local-reg space.
+    TT_SETGPR(0, data & 0xffff, 0, p_gpr::MAILBOX_TEMP * 2 + 0);
+    TT_SETGPR(0, (data >> 16) & 0xffff, 0, p_gpr::MAILBOX_TEMP * 2 + 1);
+    TT_STOREREG(p_gpr::MAILBOX_TEMP, reg_addr);
 }
 
 // Blocking read
 inline std::uint32_t mailbox_read(const std::uint8_t thread)
 {
-    return mailbox_base[thread][0];
+    const std::uint32_t reg_addr = mailbox_reg_addr(thread);
+
+    // LOADREG blocks in the backend until mailbox data is valid, landing it in a scratch GPR;
+    // sync_regfile_write forces the RISC-side read below to wait for that write to land first.
+    TT_LOADREG(p_gpr::MAILBOX_TEMP, reg_addr);
+    sync_regfile_write(p_gpr::MAILBOX_TEMP);
+    return regfile[p_gpr::MAILBOX_TEMP];
 }
 
 inline bool mailbox_not_empty(const std::uint8_t thread)

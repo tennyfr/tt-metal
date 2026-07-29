@@ -12,10 +12,11 @@ namespace ckernel
 // Common GPR mapping across all threads
 struct p_gpr
 {
-    constexpr static std::uint32_t ZERO     = 0; // Always stores 0
-    constexpr static std::uint32_t RBASE    = 1; // Ring pointer base
-    constexpr static std::uint32_t ROFFSET  = 2; // Ring pointer offset
-    constexpr static std::uint32_t DBG_CKID = 3; // Ckernel ID
+    constexpr static std::uint32_t ZERO         = 0; // Always stores 0
+    constexpr static std::uint32_t RBASE        = 1; // Ring pointer base
+    constexpr static std::uint32_t ROFFSET      = 2; // Ring pointer offset
+    constexpr static std::uint32_t DBG_CKID     = 3; // Ckernel ID
+    constexpr static std::uint32_t MAILBOX_TEMP = 8; // Scratch GPR for mailbox_read/mailbox_write SETGPR/STOREREG/LOADREG sequences
 };
 
 // Unpack GPR thread
