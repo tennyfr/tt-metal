@@ -718,8 +718,7 @@ def load_captured_routing(
     ---------------------------------------------
         layer:                  int, MoE layer index (e.g. 27)
         col:                    int, Galaxy column [0, 4) to simulate
-        captured_indices_path:  optional path override for the safetensors;
-                                defaults to LONGBOOK_QA_ENG_25600/expert_routing.safetensors
+        captured_indices_path:  path to the capture safetensors (required)
 
     Returns
     -------
@@ -744,18 +743,13 @@ def load_captured_routing(
             f"{GALAXY_NUM_DISPATCH_GROUPS} dispatch groups"
         )
 
-    if captured_indices_path:
-        path = Path(captured_indices_path)
-    else:
-        # Lazy import: transformer_helpers itself imports from this module in places.
-        from models.demos.deepseek_v3_d_p.utils.transformer_helpers import LONGBOOK_QA_ENG_25600
-
-        path = LONGBOOK_QA_ENG_25600 / "expert_routing.safetensors"
+    # No default capture: the caller says which one it wants. Silently falling back to some other
+    # corpus would replay the wrong routing under the right test name.
+    if not captured_indices_path:
+        raise ValueError("captured_indices_path is required (set TT_DS_USE_CAPTURED_INDICES)")
+    path = Path(captured_indices_path)
     if not path.exists():
-        raise FileNotFoundError(
-            f"Captured indices file not found at {path}. "
-            "Pass captured_indices_path to override, or configure DEEPSEEK_V3_TRACE_DIR."
-        )
+        raise FileNotFoundError(f"Captured indices file not found at {path}")
 
     from safetensors import safe_open
 
