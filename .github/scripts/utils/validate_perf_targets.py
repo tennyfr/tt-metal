@@ -32,6 +32,7 @@ LOWER_IS_BETTER_METRICS = {
 TARGETS_YAML_RELATIVE_PATH = Path("models/model_targets.yaml")
 BENCHMARK_DIR_RELATIVE_PATH = Path("generated/benchmark_data")
 TESTS_YAML_RELATIVE_PATH = Path("tests/pipeline_reorg/models_e2e_tests.yaml")
+OPTIONAL_TARGET_DIMENSIONS = ("sampling_mode", "optimization_profile", "workload")
 
 
 class PathProfile(str, Enum):
@@ -297,23 +298,43 @@ def _validate_targets_schema(targets_yaml: dict[str, Any]) -> list[str]:
             if not isinstance(entries, list):
                 errors.append(f"Model '{model_name}' sku '{sku_name}' must provide an entries list")
                 continue
-            seen_entry_dims: set[tuple[Any, Any]] = set()
+            seen_entry_dims: set[tuple[Any, ...]] = set()
             for idx, entry in enumerate(entries):
                 if not isinstance(entry, dict):
                     errors.append(f"Model '{model_name}' sku '{sku_name}' entry #{idx} must be a dict")
                     continue
                 status = str(entry.get("status", "active")).lower()
-                if status not in {"active", "todo"}:
+                if status not in {"active", "todo", "inactive"}:
                     errors.append(
                         f"Model '{model_name}' sku '{sku_name}' entry #{idx} has invalid status '{entry.get('status')}'"
                     )
-                dims = (entry.get("batch_size"), entry.get("seq_len"))
+                dims = (
+                    entry.get("batch_size"),
+                    entry.get("seq_len"),
+                    *(
+                        (
+                            _normalize_token(entry.get(key))
+                            if isinstance(entry.get(key), str) and entry.get(key).strip()
+                            else None
+                        )
+                        for key in OPTIONAL_TARGET_DIMENSIONS
+                    ),
+                )
                 if dims in seen_entry_dims:
                     errors.append(
-                        f"Model '{model_name}' sku '{sku_name}' has duplicate entry for batch_size={dims[0]}, seq_len={dims[1]}"
+                        f"Model '{model_name}' sku '{sku_name}' has duplicate entry for "
+                        f"batch_size={dims[0]}, seq_len={dims[1]}, sampling_mode={dims[2]}, "
+                        f"optimization_profile={dims[3]}, workload={dims[4]}"
                     )
                 else:
                     seen_entry_dims.add(dims)
+
+                for dimension_name in OPTIONAL_TARGET_DIMENSIONS:
+                    dimension_value = entry.get(dimension_name)
+                    if dimension_value is not None and not isinstance(dimension_value, str):
+                        errors.append(
+                            f"Model '{model_name}' sku '{sku_name}' entry #{idx} has non-string optional dimension '{dimension_name}'"
+                        )
 
                 for block_name in ("perf", "accuracy"):
                     block = entry.get(block_name, {})
@@ -372,6 +393,22 @@ def _collect_active_test_combos(tests_yaml_path: Path) -> list[tuple[str, str]]:
 def _normalize_token(value: Any) -> str:
     """Normalize string-like values for case-insensitive matching."""
     return str(value).strip().lower()
+
+
+def _extract_optional_target_dimensions(run: dict[str, Any]) -> dict[str, str | None]:
+    """Read optional target dimensions from benchmark config metadata."""
+    config_params = run.get("config_params", {})
+    if not isinstance(config_params, dict):
+        config_params = {}
+
+    dimensions = {
+        "sampling_mode": config_params.get("sampling_mode"),
+        "optimization_profile": config_params.get("optimization_profile", config_params.get("profile")),
+        "workload": config_params.get("workload", config_params.get("test_config")),
+    }
+    return {
+        key: value.strip() if isinstance(value, str) and value.strip() else None for key, value in dimensions.items()
+    }
 
 
 def _has_model_sku_coverage(targets_yaml: dict[str, Any], model_name: str, sku: str) -> bool:
@@ -537,23 +574,36 @@ def validate(
         batch_size = int(batch_size) if _is_number(batch_size) else None
         seq_len = run.get("input_sequence_length")
         seq_len = int(seq_len) if _is_number(seq_len) else None
+        optional_dimensions = _extract_optional_target_dimensions(run)
+        dimension_text = ", ".join(f"{key}={value}" for key, value in optional_dimensions.items() if value is not None)
+        dimension_suffix = f", {dimension_text}" if dimension_text else ""
 
         entry = model_targets.resolve_target_entry(
             model_name=model_name,
             sku=sku,
             batch_size=batch_size,
             seq_len=seq_len,
+            **optional_dimensions,
             include_todo=True,
         )
         if entry is None:
             result.missing_entries.append(
-                f"{benchmark_file.name}: no target entry for model={model_name}, sku={sku}, batch_size={batch_size}, seq_len={seq_len}"
+                f"{benchmark_file.name}: no target entry for model={model_name}, sku={sku}, "
+                f"batch_size={batch_size}, seq_len={seq_len}{dimension_suffix}"
             )
             continue
 
         if str(entry.get("status", "active")).lower() == "todo":
             result.missing_entries.append(
-                f"{benchmark_file.name}: target entry is TODO for model={model_name}, sku={sku}, batch_size={batch_size}, seq_len={seq_len}"
+                f"{benchmark_file.name}: target entry is TODO for model={model_name}, sku={sku}, "
+                f"batch_size={batch_size}, seq_len={seq_len}{dimension_suffix}"
+            )
+            continue
+
+        if str(entry.get("status", "active")).lower() == "inactive":
+            result.missing_entries.append(
+                f"{benchmark_file.name}: target entry is inactive for model={model_name}, sku={sku}, "
+                f"batch_size={batch_size}, seq_len={seq_len}{dimension_suffix}"
             )
             continue
 
@@ -574,7 +624,8 @@ def validate(
         )
 
         hard_failures_prefix = (
-            f"{benchmark_file.name}, model={model_name}, sku={sku}, batch_size={batch_size}, seq_len={seq_len}"
+            f"{benchmark_file.name}, model={model_name}, sku={sku}, batch_size={batch_size}, "
+            f"seq_len={seq_len}{dimension_suffix}"
         )
 
         # Benchmark measurement pairs already covered by a target so the no-target pass below

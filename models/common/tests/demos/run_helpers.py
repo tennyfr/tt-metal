@@ -5,8 +5,9 @@
 
 from __future__ import annotations
 
+import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import torch
 from loguru import logger
@@ -21,6 +22,11 @@ class TeacherForceResult:
     predicted_tokens: list[int]
     predicted_tokens_per_user: list[list[int]]
     reference_top5: torch.Tensor
+    prefill_time_s: float = 0.0
+    compile_decode_time_s: float = 0.0
+    decode_times_s: list[float] = field(default_factory=list)
+    batch_size: int = 1
+    prefill_len: int = 0
 
     def top1_accuracy(self) -> float:
         matches = sum(
@@ -33,6 +39,26 @@ class TeacherForceResult:
             1 for i, prediction in enumerate(self.predicted_tokens) if prediction in self.reference_top5[i, :]
         )
         return matches / len(self.predicted_tokens)
+
+    @property
+    def ttft_ms(self) -> float:
+        return self.prefill_time_s / self.batch_size * 1000 if self.batch_size else 0.0
+
+    @property
+    def prefill_time_to_token_s(self) -> float:
+        return self.prefill_time_s / self.batch_size if self.batch_size else 0.0
+
+    @property
+    def prefill_tok_s(self) -> float:
+        return (self.batch_size * self.prefill_len) / self.prefill_time_s if self.prefill_time_s > 0 else 0.0
+
+    @property
+    def decode_tok_s_u(self) -> float:
+        return len(self.decode_times_s) / sum(self.decode_times_s) if self.decode_times_s else 0.0
+
+    @property
+    def decode_tok_s(self) -> float:
+        return self.decode_tok_s_u * self.batch_size
 
 
 @dataclass
@@ -145,6 +171,16 @@ def _compile_prefill_and_decode(
     )
 
 
+def _profiler_start(profiler, name: str) -> None:
+    if profiler is not None:
+        profiler.start(name)
+
+
+def _profiler_end(profiler, name: str) -> None:
+    if profiler is not None:
+        profiler.end(name)
+
+
 def run_teacher_forcing(
     executor,
     *,
@@ -154,6 +190,7 @@ def run_teacher_forcing(
     kv_cache: list,
     page_table: torch.Tensor,
     max_batch_size: int = 1,
+    profiler=None,
 ) -> TeacherForceResult:
     """Run teacher-forcing accuracy measurement against an execution target."""
     execution_target = executor
@@ -176,37 +213,61 @@ def run_teacher_forcing(
     )
 
     logger.info(f"Teacher forcing: prefilling {prompt_len} tokens with batch={batch_size}")
-    prefill_output = execution_target.prefill_forward(
-        prompt_tokens,
-        page_table=page_table,
-        kv_cache=kv_cache,
-        prompt_lens=prompt_lens,
-        empty_slots=empty_slots,
-    )
+    _profiler_start(profiler, "inference_prefill")
+    try:
+        start_time = time.perf_counter()
+        prefill_output = execution_target.prefill_forward(
+            prompt_tokens,
+            page_table=page_table,
+            kv_cache=kv_cache,
+            prompt_lens=prompt_lens,
+            empty_slots=empty_slots,
+        )
+        _synchronize_target(execution_target)
+        prefill_time_s = time.perf_counter() - start_time
+    finally:
+        _profiler_end(profiler, "inference_prefill")
     first_tokens = torch.argmax(prefill_output, dim=-1).view(-1).tolist()
     predicted_tokens_per_user = [[int(token)] for token in first_tokens]
 
     logger.info(f"Teacher forcing: decoding {num_target - 1} tokens")
-    for step in range(1, num_target):
-        ground_truth_token = reference_tokens[prompt_len + step - 1]
-        decode_token = torch.full((batch_size,), ground_truth_token, dtype=torch.long)
-        current_pos = torch.full((batch_size,), prompt_len + step - 1, dtype=torch.long)
-        logits, _ = execution_target.decode_forward(
-            decode_token,
-            current_pos,
-            page_table=page_table,
-            kv_cache=kv_cache,
-            read_from_device=True,
-        )
+    compile_decode_time_s = 0.0
+    decode_times_s = []
+    _profiler_start(profiler, "inference_decode")
+    try:
+        for step in range(1, num_target):
+            ground_truth_token = reference_tokens[prompt_len + step - 1]
+            decode_token = torch.full((batch_size,), ground_truth_token, dtype=torch.long)
+            current_pos = torch.full((batch_size,), prompt_len + step - 1, dtype=torch.long)
+            start_time = time.perf_counter()
+            logits, _ = execution_target.decode_forward(
+                decode_token,
+                current_pos,
+                page_table=page_table,
+                kv_cache=kv_cache,
+                read_from_device=True,
+            )
+            elapsed = time.perf_counter() - start_time
+            if step == 1:
+                compile_decode_time_s = elapsed
+            else:
+                decode_times_s.append(elapsed)
 
-        next_tokens = torch.argmax(logits[:, -1, :], dim=-1).view(-1).tolist()
-        for user_id, token in enumerate(next_tokens):
-            predicted_tokens_per_user[user_id].append(int(token))
+            next_tokens = torch.argmax(logits[:, -1, :], dim=-1).view(-1).tolist()
+            for user_id, token in enumerate(next_tokens):
+                predicted_tokens_per_user[user_id].append(int(token))
+    finally:
+        _profiler_end(profiler, "inference_decode")
 
     return TeacherForceResult(
         predicted_tokens=predicted_tokens_per_user[0],
         predicted_tokens_per_user=predicted_tokens_per_user,
         reference_top5=top5_tokens[:num_target],
+        prefill_time_s=prefill_time_s,
+        compile_decode_time_s=compile_decode_time_s,
+        decode_times_s=decode_times_s,
+        batch_size=batch_size,
+        prefill_len=prompt_len,
     )
 
 
@@ -317,6 +378,7 @@ def run_perf_benchmark(
     start_pos: list[int] | None = None,
     sampling_params=None,
     pipeline_readback: bool = False,
+    profiler=None,
 ) -> PerfBenchmarkResult:
     """Run the timed prefill and decode loop against a public execution target."""
     execution_target = executor
@@ -359,10 +421,14 @@ def run_perf_benchmark(
         sampling_params=sampling_params,
     )
 
-    start_time = time.perf_counter()
-    prefill_output = execution_target.prefill_forward(tokens, **prefill_kwargs, sampling_params=sampling_params)
-    _synchronize_target(execution_target)
-    prefill_time = time.perf_counter() - start_time
+    _profiler_start(profiler, "inference_prefill")
+    try:
+        start_time = time.perf_counter()
+        prefill_output = execution_target.prefill_forward(tokens, **prefill_kwargs, sampling_params=sampling_params)
+        _synchronize_target(execution_target)
+        prefill_time = time.perf_counter() - start_time
+    finally:
+        _profiler_end(profiler, "inference_prefill")
 
     first_token = prefill_output[0] if isinstance(prefill_output, tuple) else torch.argmax(prefill_output, dim=-1)
     first_token = first_token.view(-1)[:batch_size].detach().cpu()
@@ -379,66 +445,70 @@ def run_perf_benchmark(
     pending_host_output = None
     pending_read_events = None
 
-    for iteration in range(num_decode_tokens):
-        start_time = time.perf_counter()
-        read_from_device = sampling_params is None or not can_pipeline_readback
-        if sampling_params is not None and iteration == 1:
-            sampled_decode_start = start_time
+    _profiler_start(profiler, "inference_decode")
+    try:
+        for iteration in range(num_decode_tokens):
+            start_time = time.perf_counter()
+            read_from_device = sampling_params is None or not can_pipeline_readback
+            if sampling_params is not None and iteration == 1:
+                sampled_decode_start = start_time
 
-        decode_output = execution_target.decode_forward(
-            current_tokens,
-            current_pos,
-            page_table=page_table,
-            kv_cache=kv_cache,
-            read_from_device=read_from_device,
-            sampling_params=sampling_params,
-            reset_batch=iteration == 0,
-        )
-        output, _ = _split_output(decode_output)
+            decode_output = execution_target.decode_forward(
+                current_tokens,
+                current_pos,
+                page_table=page_table,
+                kv_cache=kv_cache,
+                read_from_device=read_from_device,
+                sampling_params=sampling_params,
+                reset_batch=iteration == 0,
+            )
+            output, _ = _split_output(decode_output)
 
-        if can_pipeline_readback:
-            host_output, read_events = _submit_decode_read(execution_target, decode_output)
-            if pending_read_events is not None:
-                _synchronize_read_events(pending_read_events)
+            if can_pipeline_readback:
+                host_output, read_events = _submit_decode_read(execution_target, decode_output)
+                if pending_read_events is not None:
+                    _synchronize_read_events(pending_read_events)
+                    _consume_sampled_output(
+                        execution_target,
+                        pending_host_output,
+                        batch_size,
+                        cluster_shape,
+                        generated_token_ids,
+                        process_host_output=True,
+                    )
+                pending_host_output = host_output
+                pending_read_events = read_events
+
+            if sampling_params is not None and iteration == 0:
+                _synchronize_target(execution_target)
+            elapsed = time.perf_counter() - start_time
+
+            if iteration == 0:
+                compile_time = elapsed
+            elif sampling_params is None:
+                decode_times.append(elapsed)
+
+            if sampling_params is None:
+                if isinstance(output, torch.Tensor) and output.dim() >= 2:
+                    next_token = torch.argmax(output[:, -1, :], dim=-1)
+                else:
+                    next_token = output
+                next_token = next_token.view(-1)[:batch_size].detach().cpu()
+                for user_id, token in enumerate(next_token.tolist()):
+                    generated_token_ids[user_id].append(int(token))
+                current_tokens[:batch_size] = next_token
+            elif not can_pipeline_readback:
                 _consume_sampled_output(
                     execution_target,
-                    pending_host_output,
+                    decode_output,
                     batch_size,
                     cluster_shape,
                     generated_token_ids,
-                    process_host_output=True,
+                    process_host_output=False,
                 )
-            pending_host_output = host_output
-            pending_read_events = read_events
-
-        if sampling_params is not None and iteration == 0:
-            _synchronize_target(execution_target)
-        elapsed = time.perf_counter() - start_time
-
-        if iteration == 0:
-            compile_time = elapsed
-        elif sampling_params is None:
-            decode_times.append(elapsed)
-
-        if sampling_params is None:
-            if isinstance(output, torch.Tensor) and output.dim() >= 2:
-                next_token = torch.argmax(output[:, -1, :], dim=-1)
-            else:
-                next_token = output
-            next_token = next_token.view(-1)[:batch_size].detach().cpu()
-            for user_id, token in enumerate(next_token.tolist()):
-                generated_token_ids[user_id].append(int(token))
-            current_tokens[:batch_size] = next_token
-        elif not can_pipeline_readback:
-            _consume_sampled_output(
-                execution_target,
-                decode_output,
-                batch_size,
-                cluster_shape,
-                generated_token_ids,
-                process_host_output=False,
-            )
-        current_pos[:batch_size] += 1
+            current_pos[:batch_size] += 1
+    finally:
+        _profiler_end(profiler, "inference_decode")
 
     if sampling_params is not None:
         if pending_read_events is not None:
@@ -464,3 +534,117 @@ def run_perf_benchmark(
         num_decode_tokens=num_decode_tokens,
         generated_token_ids=generated_token_ids,
     )
+
+
+def rotate_batch(items: list, repeat: int) -> list:
+    """Rotate slot assignment so slot j receives source item (j + repeat) % N."""
+    if not items:
+        return []
+    n = len(items)
+    return [items[(slot + repeat) % n] for slot in range(n)]
+
+
+def restore_rotated_batch(slot_outputs: list, repeat: int) -> list:
+    """Undo rotate_batch output back to source-item order."""
+    if not slot_outputs:
+        return []
+    n = len(slot_outputs)
+    restored = [None] * n
+    for slot, output in enumerate(slot_outputs):
+        restored[(slot + repeat) % n] = output
+    return restored
+
+
+def assert_repeat_batch_consistency(per_repeat_outputs: list[list[list[int]]]) -> None:
+    """Assert repeated outputs are stable per source prompt."""
+    assert len(per_repeat_outputs) >= 2, "repeat-batch comparison needs at least two repeats"
+    expected_batch_size = len(per_repeat_outputs[0])
+    for repeat, outputs in enumerate(per_repeat_outputs):
+        assert (
+            len(outputs) == expected_batch_size
+        ), f"repeat-batch comparison expected {expected_batch_size} slots, got {len(outputs)} at repeat {repeat}"
+
+    baseline = per_repeat_outputs[0]
+    for repeat, outputs in enumerate(per_repeat_outputs[1:], start=1):
+        for slot, (expected, actual) in enumerate(zip(baseline, outputs)):
+            if expected != actual:
+                raise AssertionError(f"repeat-batch comparison failed at repeat {repeat}, slot {slot}")
+
+
+def run_repeat_batch_comparison(
+    items: list,
+    *,
+    repeat_count: int,
+    run_repeat,
+    cleanup_repeat=None,
+) -> list[list[list[int]]]:
+    """Run rotated repeats, restore outputs to source order, clean every repeat, then compare."""
+    restored_outputs = []
+    for repeat in range(repeat_count):
+        try:
+            slot_outputs = run_repeat(rotate_batch(items, repeat), repeat)
+        finally:
+            if cleanup_repeat is not None:
+                cleanup_repeat(repeat)
+        restored_outputs.append(restore_rotated_batch(slot_outputs, repeat))
+
+    assert_repeat_batch_consistency(restored_outputs)
+    return restored_outputs
+
+
+def _add_token_ids(target: set[int], value) -> None:
+    if value is None or isinstance(value, bool):
+        return
+    if isinstance(value, int):
+        target.add(int(value))
+        return
+    if isinstance(value, (list, tuple, set)):
+        for item in value:
+            _add_token_ids(target, item)
+
+
+def _stop_token_ids(tokenizer) -> set[int]:
+    stop_ids: set[int] = set()
+    _add_token_ids(stop_ids, getattr(tokenizer, "eos_token_id", None))
+    convert_tokens_to_ids = getattr(tokenizer, "convert_tokens_to_ids", None)
+    if callable(convert_tokens_to_ids):
+        eot_id = convert_tokens_to_ids("<|eot_id|>")
+        if isinstance(eot_id, int) and eot_id >= 0:
+            stop_ids.add(eot_id)
+    return stop_ids
+
+
+def _truncate_at_stop(token_ids: list[int], stop_ids: set[int]) -> list[int]:
+    for index, token_id in enumerate(token_ids):
+        if token_id in stop_ids:
+            return token_ids[:index]
+    return token_ids
+
+
+def assert_no_special_tokens(
+    generated_token_ids: list[list[int]],
+    tokenizer,
+    *,
+    case_name: str = "",
+    is_ci_env: bool | None = None,
+) -> None:
+    """Warn on generated special tokens locally and fail only under CI=true."""
+    if is_ci_env is None:
+        is_ci_env = os.environ.get("CI") == "true"
+
+    special_ids = set(getattr(tokenizer, "all_special_ids", []) or [])
+    stop_ids = _stop_token_ids(tokenizer)
+    offending_users = 0
+    for token_ids in generated_token_ids:
+        output_before_stop = _truncate_at_stop(list(token_ids), stop_ids)
+        if any(token_id in special_ids for token_id in output_before_stop):
+            offending_users += 1
+
+    if offending_users == 0:
+        return
+
+    prefix = f"[{case_name}] " if case_name else ""
+    message = f"{prefix}model produced special tokens ({offending_users}/{len(generated_token_ids)} users)"
+    logger.warning(message)
+    if is_ci_env:
+        raise AssertionError(message)

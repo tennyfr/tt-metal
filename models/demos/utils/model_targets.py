@@ -94,7 +94,30 @@ def _model_matches(model_key: str, model_name: str, model_block: dict[str, Any])
     return any(_normalize_token(alias) == model_norm for alias in aliases)
 
 
-def _entry_matches(entry: dict[str, Any], batch_size: int | None, seq_len: int | None) -> bool:
+def _normalize_optional_token(value: Any) -> str | None:
+    """Normalize optional target dimensions, preserving None as an unset wildcard."""
+    if value is None:
+        return None
+    token = _normalize_token(value)
+    return token if token else None
+
+
+def _entry_dimension_matches(entry: dict[str, Any], key: str, requested_value: str | None) -> bool:
+    """Match an optional non-numeric dimension exactly when the caller supplies it."""
+    entry_value = _normalize_optional_token(entry.get(key))
+    if requested_value is None:
+        return entry_value is None
+    return entry_value == requested_value
+
+
+def _entry_matches(
+    entry: dict[str, Any],
+    batch_size: int | None,
+    seq_len: int | None,
+    sampling_mode: str | None = None,
+    optimization_profile: str | None = None,
+    workload: str | None = None,
+) -> bool:
     """Match entry dimensions using strict fallback semantics for None values."""
     entry_batch = entry.get("batch_size")
     entry_seq = entry.get("seq_len")
@@ -110,6 +133,15 @@ def _entry_matches(entry: dict[str, Any], batch_size: int | None, seq_len: int |
             return False
     elif entry_seq is not None and entry_seq != seq_len:
         return False
+
+    requested_dimensions = {
+        "sampling_mode": _normalize_optional_token(sampling_mode),
+        "optimization_profile": _normalize_optional_token(optimization_profile),
+        "workload": _normalize_optional_token(workload),
+    }
+    for key, requested_value in requested_dimensions.items():
+        if not _entry_dimension_matches(entry, key, requested_value):
+            return False
     return True
 
 
@@ -120,6 +152,9 @@ def _entry_specificity(entry: dict[str, Any]) -> int:
         score += 1
     if entry.get("seq_len") is not None:
         score += 1
+    for key in ("sampling_mode", "optimization_profile", "workload"):
+        if _normalize_optional_token(entry.get(key)) is not None:
+            score += 1
     return score
 
 
@@ -128,6 +163,9 @@ def resolve_target_entry(
     sku: str,
     batch_size: int | None = None,
     seq_len: int | None = None,
+    sampling_mode: str | None = None,
+    optimization_profile: str | None = None,
+    workload: str | None = None,
     include_todo: bool = False,
 ) -> dict[str, Any] | None:
     """Resolve the best matching centralized target entry for model and SKU."""
@@ -148,9 +186,17 @@ def resolve_target_entry(
             for entry in entries:
                 if not isinstance(entry, dict):
                     continue
-                if not include_todo and _normalize_token(entry.get("status", "active")) == "todo":
+                status = _normalize_token(entry.get("status", "active"))
+                if not include_todo and status != "active":
                     continue
-                if _entry_matches(entry, batch_size=batch_size, seq_len=seq_len):
+                if _entry_matches(
+                    entry,
+                    batch_size=batch_size,
+                    seq_len=seq_len,
+                    sampling_mode=sampling_mode,
+                    optimization_profile=optimization_profile,
+                    workload=workload,
+                ):
                     matches.append(entry)
             if not matches:
                 # This SKU key matched but has no entry for the requested
@@ -166,6 +212,9 @@ def resolve_perf_targets(
     sku: str,
     batch_size: int | None = None,
     seq_len: int | None = None,
+    sampling_mode: str | None = None,
+    optimization_profile: str | None = None,
+    workload: str | None = None,
 ) -> dict[str, float] | None:
     """Resolve only the perf metrics for a given model/SKU combo."""
     entry = resolve_target_entry(
@@ -173,6 +222,9 @@ def resolve_perf_targets(
         sku=sku,
         batch_size=batch_size,
         seq_len=seq_len,
+        sampling_mode=sampling_mode,
+        optimization_profile=optimization_profile,
+        workload=workload,
         include_todo=False,
     )
     if not entry:
@@ -186,6 +238,9 @@ def resolve_accuracy_targets(
     sku: str,
     batch_size: int | None = None,
     seq_len: int | None = None,
+    sampling_mode: str | None = None,
+    optimization_profile: str | None = None,
+    workload: str | None = None,
 ) -> dict[str, float] | None:
     """Resolve only the accuracy metrics for a given model/SKU combo."""
     entry = resolve_target_entry(
@@ -193,6 +248,9 @@ def resolve_accuracy_targets(
         sku=sku,
         batch_size=batch_size,
         seq_len=seq_len,
+        sampling_mode=sampling_mode,
+        optimization_profile=optimization_profile,
+        workload=workload,
         include_todo=False,
     )
     if not entry:

@@ -139,3 +139,132 @@ def test_model_targets_resolver_blackhole_alias_resolution(tmp_path: Path, monke
     canonical = resolve_perf_targets("demo-model", "bh_p150", 1, 128)
     assert p150_alias["decode_t/s/u"] == 42.0
     assert canonical["decode_t/s/u"] == 42.0
+
+
+def test_model_targets_resolver_llama31_8b_serialized_alias(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    targets = {
+        "version": 1,
+        "targets": {
+            "llama3.1-8b": {
+                "aliases": ["Llama-3.1-8B-Instruct", "meta-llama/Llama-3.1-8B-Instruct"],
+                "skus": {
+                    "wh_n150": {
+                        "entries": [
+                            {
+                                "batch_size": 1,
+                                "seq_len": 512,
+                                "status": "active",
+                                "perf": {},
+                                "accuracy": {"top1": 90.0, "top5": 97.0},
+                            }
+                        ]
+                    }
+                },
+            }
+        },
+    }
+    yaml_path = tmp_path / "targets.yaml"
+    yaml_path.write_text(yaml.safe_dump(targets), encoding="utf-8")
+    monkeypatch.setattr(model_targets, "TARGETS_YAML_PATH_DEFAULT", str(yaml_path))
+
+    accuracy = resolve_accuracy_targets("llama-3.1-8b-instruct", "N150", 1, 512)
+    assert accuracy == {"top1": 90.0, "top5": 97.0}
+
+
+def test_model_targets_resolver_requires_exact_optional_dimensions(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    targets = {
+        "version": 1,
+        "targets": {
+            "llama3.1-8b": {
+                "aliases": ["llama-3.1-8b-instruct"],
+                "skus": {
+                    "wh_n150": {
+                        "entries": [
+                            {
+                                "batch_size": 32,
+                                "seq_len": 1024,
+                                "status": "active",
+                                "sampling_mode": "host",
+                                "optimization_profile": "performance",
+                                "workload": "batch-32",
+                                "perf": {"decode_t/s/u": 1.0},
+                                "accuracy": {},
+                            },
+                            {
+                                "batch_size": 32,
+                                "seq_len": 1024,
+                                "status": "TODO",
+                                "sampling_mode": "on_device_topk",
+                                "optimization_profile": "performance",
+                                "workload": "batch-32",
+                                "perf": {},
+                                "accuracy": {},
+                            },
+                        ]
+                    }
+                },
+            }
+        },
+    }
+    yaml_path = tmp_path / "targets.yaml"
+    yaml_path.write_text(yaml.safe_dump(targets), encoding="utf-8")
+    monkeypatch.setattr(model_targets, "TARGETS_YAML_PATH_DEFAULT", str(yaml_path))
+
+    host = resolve_perf_targets(
+        "llama-3.1-8b-instruct",
+        "wh_n150",
+        batch_size=32,
+        seq_len=1024,
+        sampling_mode="host",
+        optimization_profile="performance",
+        workload="batch-32",
+    )
+    on_device = resolve_perf_targets(
+        "llama-3.1-8b-instruct",
+        "wh_n150",
+        batch_size=32,
+        seq_len=1024,
+        sampling_mode="on_device_topk",
+        optimization_profile="performance",
+        workload="batch-32",
+    )
+    no_dimensions = resolve_perf_targets("llama-3.1-8b-instruct", "wh_n150", batch_size=32, seq_len=1024)
+
+    assert host["decode_t/s/u"] == 1.0
+    assert on_device is None
+    assert no_dimensions is None
+
+
+def test_model_targets_resolver_wormhole_ci_sku_aliases(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    targets = {
+        "version": 1,
+        "targets": {
+            "llama3.1-8b": {
+                "aliases": ["llama-3.1-8b-instruct"],
+                "skus": {
+                    "wh_n150": {
+                        "entries": [
+                            {"batch_size": 1, "seq_len": 512, "status": "active", "perf": {}, "accuracy": {"top1": 1}}
+                        ]
+                    },
+                    "wh_llmbox_perf": {
+                        "entries": [
+                            {"batch_size": 1, "seq_len": 512, "status": "active", "perf": {}, "accuracy": {"top1": 2}}
+                        ]
+                    },
+                    "wh_galaxy_perf": {
+                        "entries": [
+                            {"batch_size": 1, "seq_len": 512, "status": "active", "perf": {}, "accuracy": {"top1": 3}}
+                        ]
+                    },
+                },
+            }
+        },
+    }
+    yaml_path = tmp_path / "targets.yaml"
+    yaml_path.write_text(yaml.safe_dump(targets), encoding="utf-8")
+    monkeypatch.setattr(model_targets, "TARGETS_YAML_PATH_DEFAULT", str(yaml_path))
+
+    assert resolve_accuracy_targets("llama-3.1-8b-instruct", "N150", 1, 512)["top1"] == 1
+    assert resolve_accuracy_targets("llama-3.1-8b-instruct", "T3K", 1, 512)["top1"] == 2
+    assert resolve_accuracy_targets("llama-3.1-8b-instruct", "TG", 1, 512)["top1"] == 3

@@ -15,7 +15,37 @@
 
 # ── Llama ──────────────────────────────────────────────────────────
 
-- name: Llama 3.1-8B e2e tests
+- name: Llama 3.1-8B e2e tests (Wormhole N150 TTTv2)
+  cmd: |
+    export HF_MODEL=meta-llama/Llama-3.1-8B-Instruct HF_HUB_OFFLINE=1 TT_CACHE_PATH=/mnt/MLPerf/huggingface/tt_cache/tttv2/meta-llama/Llama-3.1-8B-Instruct MESH_DEVICE=N150 SAMPLING_MODE=on_device_topk PIPELINE_READBACK=1
+    pytest --timeout 420 "models/common/tests/demos/llama3_8b/demo.py::test_llama3_8b[wormhole_b0-performance-device_params0-token-accuracy-N150]"
+    pytest --timeout 600 "models/common/tests/demos/llama3_8b/demo.py::test_llama3_8b[wormhole_b0-performance-device_params0-batch-32-N150]"
+    pytest --timeout 600 "models/common/tests/demos/llama3_8b/demo.py::test_llama3_8b[wormhole_b0-performance-device_params0-eval-32-N150]"
+  model: llama3.1-8b
+  model_family: Llama
+  skus:
+    wh_n150:
+      timeout: 11
+      tier: 1
+  owner_id: U03PUAKE719 # Miguel Tairum Cruz
+  team: models
+
+- name: Llama 3.1-8B e2e tests (Wormhole T3K TTTv2)
+  cmd: |
+    export HF_MODEL=meta-llama/Llama-3.1-8B-Instruct HF_HUB_OFFLINE=1 TT_CACHE_PATH=/mnt/MLPerf/huggingface/tt_cache/tttv2/meta-llama/Llama-3.1-8B-Instruct MESH_DEVICE=T3K SAMPLING_MODE=on_device_topk PIPELINE_READBACK=1
+    pytest --timeout 420 "models/common/tests/demos/llama3_8b/demo.py::test_llama3_8b[wormhole_b0-performance-device_params0-token-accuracy-T3K]"
+    pytest --timeout 600 "models/common/tests/demos/llama3_8b/demo.py::test_llama3_8b[wormhole_b0-performance-device_params0-batch-32-T3K]"
+    pytest --timeout 600 "models/common/tests/demos/llama3_8b/demo.py::test_llama3_8b[wormhole_b0-performance-device_params0-eval-32-T3K]"
+  model: llama3.1-8b
+  model_family: Llama
+  skus:
+    wh_llmbox_perf:
+      timeout: 11
+      tier: 2
+  owner_id: U03PUAKE719 # Miguel Tairum Cruz
+  team: models
+
+- name: Llama 3.1-8B e2e tests (Blackhole TTTv1)
   cmd: |
     export HF_MODEL=meta-llama/Llama-3.1-8B-Instruct TT_CACHE_PATH=/mnt/MLPerf/huggingface/tt_cache/meta-llama/Llama-3.1-8B-Instruct
     pytest --timeout 420 models/tt_transformers/demo/simple_text_demo.py -k "performance-ci-token-matching"
@@ -25,19 +55,15 @@
     # repeat batch (this run reports/validates perf). See #47820 for the multi-batch work.
     pytest --timeout 600 models/tt_transformers/demo/simple_text_demo.py -k "performance-ci-eval-32" --skip_perf_report
     pytest --timeout 600 models/tt_transformers/demo/simple_text_demo.py -k "performance-ci-eval-32" --use_prefetcher True --repeat_batches 1
+    # Keep this TTTv1 leg until TTTv2 supports native HF-layout RoPE:
+    # https://github.com/tenstorrent/tt-metal/issues/51374
     pytest --timeout 420 models/tt_transformers/demo/simple_text_demo.py -k "performance-ci-token-matching" --use_hf_rope
   model: llama3.1-8b
   model_family: Llama
   skus:
-    wh_n150:
-      timeout: 11
-      tier: 1
     bh_p150:
       timeout: 11
       tier: 1
-    wh_llmbox_perf:
-      timeout: 11
-      tier: 2
     bh_quietbox_2:
       timeout: 20
       tier: 2
@@ -71,16 +97,28 @@
   team: models
 
 # TODO: Move DP tests to sweep pipelines when those come online
-- name: Llama 3.1-8B data-parallel e2e tests
+- name: Llama 3.1-8B data-parallel e2e tests (Wormhole TTTv2)
   cmd: |
-    export HF_MODEL=meta-llama/Llama-3.1-8B-Instruct TT_CACHE_PATH=/mnt/MLPerf/huggingface/tt_cache/meta-llama/Llama-3.1-8B-Instruct
-    pytest models/tt_transformers/demo/simple_text_demo.py -k "performance-ci-b1-DP-4 or performance-ci-b1-DP-8" --timeout 1000
+    export HF_MODEL=meta-llama/Llama-3.1-8B-Instruct HF_HUB_OFFLINE=1 TT_CACHE_PATH=/mnt/MLPerf/huggingface/tt_cache/tttv2/meta-llama/Llama-3.1-8B-Instruct MESH_DEVICE=T3K SAMPLING_MODE=on_device_topk PIPELINE_READBACK=1
+    pytest --timeout 1000 "models/common/tests/demos/llama3_8b/demo.py::test_llama3_8b[wormhole_b0-performance-device_params0-ci-b1-DP-4-T3K]"
+    pytest --timeout 1000 "models/common/tests/demos/llama3_8b/demo.py::test_llama3_8b[wormhole_b0-performance-device_params0-ci-b1-DP-8-T3K]"
   model: llama3.1-8b-dp
   model_family: Llama
   skus:
     wh_llmbox_perf:
       timeout: 20
       tier: 2
+  owner_id: U03PUAKE719 # Miguel Tairum Cruz
+  team: models
+
+# TODO: Move DP tests to sweep pipelines when those come online
+- name: Llama 3.1-8B data-parallel e2e tests (Blackhole TTTv1)
+  cmd: |
+    export HF_MODEL=meta-llama/Llama-3.1-8B-Instruct TT_CACHE_PATH=/mnt/MLPerf/huggingface/tt_cache/meta-llama/Llama-3.1-8B-Instruct
+    pytest models/tt_transformers/demo/simple_text_demo.py -k "performance-ci-b1-DP-4 or performance-ci-b1-DP-8" --timeout 1000
+  model: llama3.1-8b-dp
+  model_family: Llama
+  skus:
     # bh_quietbox_2 is 4-chip: the DP-8 case is auto-skipped when the chip count
     # is below the DP factor, so it effectively runs the DP-4 case only.
     # Migrated from the legacy blackhole_demo_tests.yaml DP entries.
@@ -93,8 +131,11 @@
 # TODO: Move DP tests to sweep pipelines when those come online
 - name: Llama 3.1-8B data-parallel e2e tests (Galaxy)
   cmd: |
-    export HF_MODEL=meta-llama/Llama-3.1-8B-Instruct TT_CACHE_PATH=/mnt/MLPerf/huggingface/tt_cache/meta-llama/Llama-3.1-8B-Instruct
-    pytest models/tt_transformers/demo/simple_text_demo.py -k "performance-ci-b1-DP" --timeout 1000
+    export HF_MODEL=meta-llama/Llama-3.1-8B-Instruct HF_HUB_OFFLINE=1 TT_CACHE_PATH=/mnt/MLPerf/huggingface/tt_cache/tttv2/meta-llama/Llama-3.1-8B-Instruct MESH_DEVICE=TG SAMPLING_MODE=on_device_topk PIPELINE_READBACK=1
+    pytest --timeout 1000 "models/common/tests/demos/llama3_8b/demo.py::test_llama3_8b[wormhole_b0-performance-device_params0-ci-b1-DP-4-TG]"
+    pytest --timeout 1000 "models/common/tests/demos/llama3_8b/demo.py::test_llama3_8b[wormhole_b0-performance-device_params0-ci-b1-DP-8-TG]"
+    pytest --timeout 1000 "models/common/tests/demos/llama3_8b/demo.py::test_llama3_8b[wormhole_b0-performance-device_params0-ci-b1-DP-16-TG]"
+    pytest --timeout 1000 "models/common/tests/demos/llama3_8b/demo.py::test_llama3_8b[wormhole_b0-performance-device_params0-ci-b1-DP-32-TG]"
   model: llama3.1-8b-dp-galaxy
   model_family: Llama
   skus:

@@ -12,7 +12,6 @@ from pathlib import Path
 
 import yaml
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_PATH = REPO_ROOT / ".github/scripts/utils/validate_perf_targets.py"
 LLM_DEMO_UTILS_PATH = REPO_ROOT / "models/demos/utils/llm_demo_utils.py"
@@ -55,6 +54,7 @@ def _write_complete_run(
     seq_len: int,
     decode_tsu: float,
     extra_measurements: list[dict] | None = None,
+    config_params: dict | None = None,
 ) -> None:
     payload = {
         "ml_model_name": model,
@@ -64,6 +64,8 @@ def _write_complete_run(
             {"step_name": "inference_decode", "name": "tokens/s/user", "value": decode_tsu},
         ],
     }
+    if config_params is not None:
+        payload["config_params"] = config_params
     if extra_measurements:
         payload["measurements"].extend(extra_measurements)
     path.write_text(json.dumps(payload), encoding="utf-8")
@@ -519,6 +521,171 @@ def test_validate_perf_targets_todo_entry_respects_strict_flag(tmp_path):
 
     non_strict = _run_validator(tmp_path, strict_missing=False)
     assert non_strict.returncode == 0, non_strict.stdout + non_strict.stderr
+
+    strict = _run_validator(tmp_path, strict_missing=True)
+    assert strict.returncode == 1
+
+
+def test_validate_perf_targets_uses_sampling_profile_workload_dimensions(tmp_path):
+    (tmp_path / "generated/benchmark_data").mkdir(parents=True)
+    (tmp_path / "models").mkdir(parents=True)
+    (tmp_path / "tests/pipeline_reorg").mkdir(parents=True)
+
+    _write_complete_run(
+        tmp_path / "generated/benchmark_data/complete_run_1.json",
+        model="llama-3.1-8b-instruct",
+        batch_size=32,
+        seq_len=1024,
+        decode_tsu=42.0,
+        config_params={
+            "sampling_mode": "on_device_topk",
+            "optimization_profile": "performance",
+            "workload": "batch-32",
+        },
+    )
+
+    targets = {
+        "version": 1,
+        "targets": {
+            "llama3.1-8b": {
+                "aliases": ["Llama-3.1-8B-Instruct", "meta-llama/Llama-3.1-8B-Instruct"],
+                "skus": {
+                    "wh_n150": {
+                        "entries": [
+                            {
+                                "batch_size": 32,
+                                "seq_len": 1024,
+                                "status": "active",
+                                "sampling_mode": "host",
+                                "optimization_profile": "performance",
+                                "workload": "batch-32",
+                                "perf": {"decode_t/s/u": 1.0},
+                                "accuracy": {},
+                            },
+                            {
+                                "batch_size": 32,
+                                "seq_len": 1024,
+                                "status": "active",
+                                "sampling_mode": "on_device_topk",
+                                "optimization_profile": "performance",
+                                "workload": "batch-32",
+                                "perf": {"decode_t/s/u": 42.0},
+                                "accuracy": {},
+                            },
+                        ]
+                    }
+                },
+            }
+        },
+    }
+    (tmp_path / "models/model_targets.yaml").write_text(yaml.safe_dump(targets), encoding="utf-8")
+    tests_yaml = [{"model": "llama3.1-8b", "skus": {"wh_n150": {"tier": 1}}, "team": "models"}]
+    (tmp_path / "tests/pipeline_reorg/models_e2e_tests.yaml").write_text(yaml.safe_dump(tests_yaml), encoding="utf-8")
+
+    result = _run_validator(tmp_path, strict_missing=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "| llama-3.1-8b-instruct | wh_n150 | 32 | 1024 | decode_t/s/u | 42.0 | 42.0" in result.stdout
+
+
+def test_validate_perf_targets_strict_missing_when_dimensional_entry_is_absent(tmp_path):
+    (tmp_path / "generated/benchmark_data").mkdir(parents=True)
+    (tmp_path / "models").mkdir(parents=True)
+    (tmp_path / "tests/pipeline_reorg").mkdir(parents=True)
+
+    _write_complete_run(
+        tmp_path / "generated/benchmark_data/complete_run_1.json",
+        model="llama-3.1-8b-instruct",
+        batch_size=32,
+        seq_len=1024,
+        decode_tsu=42.0,
+        config_params={
+            "sampling_mode": "on_device_topk",
+            "optimization_profile": "performance",
+            "workload": "batch-32",
+        },
+    )
+
+    targets = {
+        "version": 1,
+        "targets": {
+            "llama3.1-8b": {
+                "aliases": ["llama-3.1-8b-instruct"],
+                "skus": {
+                    "wh_n150": {
+                        "entries": [
+                            {
+                                "batch_size": 32,
+                                "seq_len": 1024,
+                                "status": "active",
+                                "perf": {"decode_t/s/u": 42.0},
+                                "accuracy": {},
+                            }
+                        ]
+                    }
+                },
+            }
+        },
+    }
+    (tmp_path / "models/model_targets.yaml").write_text(yaml.safe_dump(targets), encoding="utf-8")
+    tests_yaml = [{"model": "llama3.1-8b", "skus": {"wh_n150": {"tier": 1}}, "team": "models"}]
+    (tmp_path / "tests/pipeline_reorg/models_e2e_tests.yaml").write_text(yaml.safe_dump(tests_yaml), encoding="utf-8")
+
+    result = _run_validator(tmp_path, strict_missing=True)
+    assert result.returncode == 1
+    assert "no target entry" in result.stdout
+    assert "sampling_mode=on_device_topk" in result.stdout
+    assert "workload=batch-32" in result.stdout
+
+
+def test_validate_perf_targets_inactive_entry_respects_strict_flag(tmp_path):
+    (tmp_path / "generated/benchmark_data").mkdir(parents=True)
+    (tmp_path / "models").mkdir(parents=True)
+    (tmp_path / "tests/pipeline_reorg").mkdir(parents=True)
+
+    _write_complete_run(
+        tmp_path / "generated/benchmark_data/complete_run_1.json",
+        model="llama-3.1-8b-instruct",
+        batch_size=32,
+        seq_len=2048,
+        decode_tsu=42.0,
+        config_params={
+            "sampling_mode": "on_device_topk",
+            "optimization_profile": "performance",
+            "workload": "batch-32-ci",
+        },
+    )
+
+    targets = {
+        "version": 1,
+        "targets": {
+            "llama3.1-8b": {
+                "aliases": ["llama-3.1-8b-instruct"],
+                "skus": {
+                    "wh_n150": {
+                        "entries": [
+                            {
+                                "batch_size": 32,
+                                "seq_len": 2048,
+                                "status": "inactive",
+                                "sampling_mode": "on_device_topk",
+                                "optimization_profile": "performance",
+                                "workload": "batch-32-ci",
+                                "perf": {},
+                                "accuracy": {},
+                            }
+                        ]
+                    }
+                },
+            }
+        },
+    }
+    (tmp_path / "models/model_targets.yaml").write_text(yaml.safe_dump(targets), encoding="utf-8")
+    tests_yaml = [{"model": "llama3.1-8b", "skus": {"wh_n150": {"tier": 1}}, "team": "models"}]
+    (tmp_path / "tests/pipeline_reorg/models_e2e_tests.yaml").write_text(yaml.safe_dump(tests_yaml), encoding="utf-8")
+
+    non_strict = _run_validator(tmp_path, strict_missing=False)
+    assert non_strict.returncode == 0, non_strict.stdout + non_strict.stderr
+    assert "target entry is inactive" in non_strict.stdout
 
     strict = _run_validator(tmp_path, strict_missing=True)
     assert strict.returncode == 1

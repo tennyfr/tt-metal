@@ -462,12 +462,30 @@ targets:
               top1: 95
               top5: 100
   llama3.1-8b:
-    aliases: ["Llama-3.1-8B", "meta-llama/Llama-3.1-8B-Instruct"]
+    aliases: ["Llama-3.1-8B", "Llama-3.1-8B-Instruct", "llama-3.1-8b-instruct", "meta-llama/Llama-3.1-8B-Instruct"]
     skus:
       wh_n150:
         entries:
           - batch_size: 1
             seq_len: 512
+            status: active
+            perf: {}
+            accuracy:
+              top1: 90
+              top5: 97
+          - batch_size: 1
+            seq_len: 512
+            optimization_profile: performance
+            workload: token-accuracy
+            status: active
+            perf: {}
+            accuracy:
+              top1: 90
+              top5: 97
+          - batch_size: 1
+            seq_len: 512
+            optimization_profile: accuracy
+            workload: token-accuracy
             status: active
             perf: {}
             accuracy:
@@ -480,6 +498,62 @@ targets:
               decode_t/s/u: 8.8
               prefill_time_to_first_token: 195
             accuracy: {}
+          - batch_size: 1
+            seq_len: 1024
+            sampling_mode: host
+            optimization_profile: performance
+            workload: batch-1
+            status: TODO
+            perf: {}
+            accuracy: {}
+            note: "TTTv2 host-sampling perf target needs three-sample median/range measurement on wh_n150."
+          - batch_size: 1
+            seq_len: 1024
+            sampling_mode: on_device_topk
+            optimization_profile: performance
+            workload: batch-1
+            status: TODO
+            perf: {}
+            accuracy: {}
+            note: "TTTv2 on-device-sampling perf target needs three-sample median/range measurement on wh_n150."
+          - batch_size: 32
+            seq_len: 1024
+            sampling_mode: host
+            optimization_profile: performance
+            workload: batch-32
+            status: TODO
+            perf: {}
+            accuracy: {}
+            note: "TTTv2 host-sampling perf target needs three-sample median/range measurement on wh_n150."
+          - batch_size: 32
+            seq_len: 1024
+            sampling_mode: on_device_topk
+            optimization_profile: performance
+            workload: batch-32
+            status: active
+            perf:
+              decode_t/s/u: 8.81
+              prefill_time_to_first_token: 177.1
+            accuracy: {}
+            note: "Seeded from the existing TTTv2 8B demo parity gate; replace after three-sample cold/warm measurement."
+          - batch_size: 32
+            seq_len: 2048
+            sampling_mode: host
+            optimization_profile: performance
+            workload: batch-32-ci
+            status: inactive
+            perf: {}
+            accuracy: {}
+            note: "N150 batch-32-ci sequence capacity and perf target must be measured before enabling."
+          - batch_size: 32
+            seq_len: 2048
+            sampling_mode: on_device_topk
+            optimization_profile: performance
+            workload: batch-32-ci
+            status: inactive
+            perf: {}
+            accuracy: {}
+            note: "N150 batch-32-ci sequence capacity and perf target must be measured before enabling."
       wh_n300:
         entries:
           - batch_size: 1
@@ -534,6 +608,24 @@ targets:
             accuracy:
               top1: 89.5
               top5: 97.5
+          - batch_size: 1
+            seq_len: 512
+            optimization_profile: performance
+            workload: token-accuracy
+            status: active
+            perf: {}
+            accuracy:
+              top1: 89.5
+              top5: 97.5
+          - batch_size: 1
+            seq_len: 512
+            optimization_profile: accuracy
+            workload: token-accuracy
+            status: active
+            perf: {}
+            accuracy:
+              top1: 89.5
+              top5: 97.5
           - batch_size: 32
             seq_len: 712
             status: active
@@ -541,6 +633,62 @@ targets:
               decode_t/s/u: 64.0
               prefill_time_to_first_token: 40
             accuracy: {}
+          - batch_size: 1
+            seq_len: 1024
+            sampling_mode: host
+            optimization_profile: performance
+            workload: batch-1
+            status: TODO
+            perf: {}
+            accuracy: {}
+            note: "TTTv2 host-sampling perf target needs three-sample median/range measurement on wh_llmbox_perf."
+          - batch_size: 1
+            seq_len: 1024
+            sampling_mode: on_device_topk
+            optimization_profile: performance
+            workload: batch-1
+            status: TODO
+            perf: {}
+            accuracy: {}
+            note: "TTTv2 on-device-sampling perf target needs three-sample median/range measurement on wh_llmbox_perf."
+          - batch_size: 32
+            seq_len: 1024
+            sampling_mode: host
+            optimization_profile: performance
+            workload: batch-32
+            status: TODO
+            perf: {}
+            accuracy: {}
+            note: "TTTv2 host-sampling perf target needs three-sample median/range measurement on wh_llmbox_perf."
+          - batch_size: 32
+            seq_len: 1024
+            sampling_mode: on_device_topk
+            optimization_profile: performance
+            workload: batch-32
+            status: active
+            perf:
+              decode_t/s/u: 56.1
+              prefill_time_to_first_token: 39.9
+            accuracy: {}
+            note: "Seeded from the existing TTTv2 8B demo parity gate; replace after three-sample cold/warm measurement."
+          - batch_size: 32
+            seq_len: 2048
+            sampling_mode: host
+            optimization_profile: performance
+            workload: batch-32-ci
+            status: TODO
+            perf: {}
+            accuracy: {}
+            note: "TTTv2 host-sampling batch-32-ci target needs sequence-capacity confirmation and three-sample median/range measurement on wh_llmbox_perf."
+          - batch_size: 32
+            seq_len: 2048
+            sampling_mode: on_device_topk
+            optimization_profile: performance
+            workload: batch-32-ci
+            status: TODO
+            perf: {}
+            accuracy: {}
+            note: "TTTv2 on-device-sampling batch-32-ci target needs sequence-capacity confirmation and three-sample median/range measurement on wh_llmbox_perf."
       wh_galaxy_perf:
         entries:
           - batch_size: 1
