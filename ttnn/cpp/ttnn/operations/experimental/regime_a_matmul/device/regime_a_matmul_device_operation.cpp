@@ -269,7 +269,8 @@ RegimeAMatmulDeviceOperation::invoke(
         // at 0. Two different masks would then alias onto one cached program and the A/B would silently
         // compare a mode against itself. That happened: the limit sat at 0x1FFFF while bits 17-21 were in use,
         // which invalidated four experiments. Fail loudly instead.
-        constexpr long kMaxDiagMask = 0x3FFFFFL;  // bits 0..21 currently defined
+        constexpr long kMaxDiagMask =
+            0xFFFFFFL;  // bits 0..23 currently defined (22 = FORCE_CHAIN, 23 = FORCE_RSCATTER)
         TT_FATAL(
             v >= 0 && v <= kMaxDiagMask,
             "TT_REGIME_A_DIAG_MASK={} is out of range (0..{}). Raise kMaxDiagMask when adding diagnostic bits; "

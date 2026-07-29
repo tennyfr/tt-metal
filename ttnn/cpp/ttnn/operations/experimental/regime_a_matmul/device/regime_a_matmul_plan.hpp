@@ -197,6 +197,15 @@ struct CorePlan {
     uint32_t red_nrecv{1};      // incoming partials: 0 at a chain end, 1 normally, 2 at a meet root
     uint32_t red_send_ord{};    // MY ordinal among my destination's inputs (0, or 1 for the root's down input)
     uint32_t red_prev2_idx{};   // the root's second predecessor (only when red_nrecv == 2)
+
+    // RING REDUCE-SCATTER reduction (selected by the factory's rs_gate; see the factory for the topology).
+    // The factory fills these post-plan for the Pk cores of each (bank, sub) group; the chain leaves them at
+    // self/0 and never reads them. rs_pos = position in the optimized Pk-cycle; rs_next/prev_idx = cyclic
+    // neighbours (core indices); rs_own_chunk = (rs_pos+1)%Pk = the tile-chunk this core finally owns + writes.
+    uint32_t rs_pos{};
+    uint32_t rs_next_idx{};
+    uint32_t rs_prev_idx{};
+    uint32_t rs_own_chunk{};
 };
 
 struct ExecutionPlan {
@@ -441,6 +450,9 @@ inline PlanResult build_plan(const PlanInputs& in) {
                 cp.red_nrecv = 0u;
                 cp.red_send_ord = 0u;
             }
+            // reduce-scatter ring links default to self (the factory overwrites them when it selects rscatter)
+            cp.rs_next_idx = i;
+            cp.rs_prev_idx = i;
 
             plan.cores[i] = cp;
         }

@@ -98,6 +98,36 @@ void reduce_add_block(uint32_t a_cb, uint32_t b_cb, uint32_t out_cb, uint32_t M_
     }
 }
 
+#ifdef RSCATTER
+// Ring reduce-scatter helpers. rs_copy_chunk: copy n_tiles from in_cb starting at tile in_tile_off -> out_cb,
+// used to SEED the ring with this core's own chunk. No cb push/pop (the caller manages both CBs).
+void rs_copy_chunk(uint32_t in_cb, uint32_t in_tile_off, uint32_t out_cb, uint32_t n_tiles) {
+    copy_tile_to_dst_init_short(in_cb);
+    reconfig_data_format_srca(in_cb);
+    pack_reconfig_data_format(out_cb);
+    for (uint32_t i = 0; i < n_tiles; ++i) {
+        acquire_dst();
+        copy_tile(in_cb, in_tile_off + i, 0);
+        pack_tile(0, out_cb);
+        release_dst();
+    }
+}
+// out_cb[0..n) = acc_cb[acc_tile_off ..) + add_cb[0..n). acc_cb is this core's resident FP32 matmul partial
+// (read at a chunk offset); add_cb is the received running sum. This adds MY contribution for the chunk that is
+// currently travelling round the ring. Every add is FP32 in DST, exactly as in the chain's reduce_add_block.
+void rs_add_chunk(uint32_t acc_cb, uint32_t acc_tile_off, uint32_t add_cb, uint32_t out_cb, uint32_t n_tiles) {
+    add_tiles_init(acc_cb, add_cb);
+    reconfig_data_format(acc_cb, add_cb);
+    pack_reconfig_data_format(out_cb);
+    for (uint32_t i = 0; i < n_tiles; ++i) {
+        acquire_dst();
+        add_tiles(acc_cb, add_cb, acc_tile_off + i, i, 0 /*dst*/);
+        pack_tile(0, out_cb);
+        release_dst();
+    }
+}
+#endif
+
 // For caller: if FUSE_TERNARY defined then out_cb == in_cb
 /**
  * Add bias to input block
@@ -403,6 +433,13 @@ void kernel_main() {
     // adds them one at a time in channel order, which matches the order the writer pushes them.
     const uint32_t red_nrecv = get_arg_val<uint32_t>(argidx++);
 #endif
+#ifdef RSCATTER
+    // Ring reduce-scatter: this core's cycle position, the cycle size P=Pk, and chunk_tiles (tiles per chunk =
+    // M_block*N_block / Pk). Follow is_reduce_bottom; unfused only, so they cannot collide with is_reduce_top.
+    const uint32_t rs_ring_pos = get_arg_val<uint32_t>(argidx++);
+    const uint32_t rs_P = get_arg_val<uint32_t>(argidx++);
+    const uint32_t rs_chunk_tiles = get_arg_val<uint32_t>(argidx++);
+#endif
 
 // Any fusion active => the reduction ROOT (is_top) applies bias/activation/addcmul exactly once after the
 // split-K partials are summed. Non-root bands forward the RAW partial (no fusion). When no fusion is active
@@ -524,6 +561,39 @@ void kernel_main() {
             cb_push_back(intermediate_cb, out_block_num_tiles);
             PACK((llk_pack_reconfig_l1_acc(0)));
 
+#ifdef RSCATTER
+            // ---- Ring REDUCE-SCATTER. intermediate_cb (FP32, resident) is my matmul partial for the whole
+            // sub-block, row-major, partitioned into P=Pk contiguous chunks of ct tiles (chunk c = tiles
+            // [c*ct, (c+1)*ct)). Seed cb_send with MY OWN chunk `rs_ring_pos`; then over P-1 rounds receive the
+            // running sum for chunk d = (rs_ring_pos - t - 1) mod P, add my resident chunk d, and either forward
+            // it (earlier rounds) or keep it (last round) - at which point it is fully reduced and is exactly
+            // the chunk this core owns, so it goes to out_cb for the writer to send to DRAM. ----
+            {
+                const uint32_t P = rs_P;
+                const uint32_t ct = rs_chunk_tiles;
+                constexpr uint32_t cb_send_cb = tt::CBIndex::c_4;     // compute -> writer send chunk (bf16)
+                constexpr uint32_t cb_recv_cb = tt::CBIndex::c_5;     // incoming chunk (bf16), 2 slots
+                cb_wait_front(intermediate_cb, out_block_num_tiles);  // resident; popped after the ring
+                cb_reserve_back(cb_send_cb, ct);
+                rs_copy_chunk(intermediate_cb, rs_ring_pos * ct, cb_send_cb, ct);
+                cb_push_back(cb_send_cb, ct);
+                for (uint32_t t = 0; t + 1u < P; ++t) {
+                    const uint32_t d = (rs_ring_pos + P - t - 1u) % P;  // chunk reduced this round
+                    cb_wait_front(cb_recv_cb, ct);
+                    if (t + 1u < P - 1u) {  // forward the running sum into the next round's send slot
+                        cb_reserve_back(cb_send_cb, ct);
+                        rs_add_chunk(intermediate_cb, d * ct, cb_recv_cb, cb_send_cb, ct);
+                        cb_push_back(cb_send_cb, ct);
+                    } else {  // last round: fully reduced AND owned by this core -> writer writes it to DRAM
+                        cb_reserve_back(out_cb, ct);
+                        rs_add_chunk(intermediate_cb, d * ct, cb_recv_cb, out_cb, ct);
+                        cb_push_back(out_cb, ct);
+                    }
+                    cb_pop_front(cb_recv_cb, ct);
+                }
+                cb_pop_front(intermediate_cb, out_block_num_tiles);
+            }
+#else
             cb_reserve_back(out_cb, out_block_num_tiles);
             // Split-K plan B column reduction: bottom band emits its own matmul partial; every other band
             // adds the running sum forwarded up from the band below. The DM then either forwards out_cb up
@@ -605,6 +675,7 @@ void kernel_main() {
 #endif  // fusion kind
             }
 #endif  // no-fusion chain vs fused
+#endif  // RSCATTER vs chain
         }
     }
     cb_pop_front(in0_cb, K_num_blocks * in0_block_num_tiles);
