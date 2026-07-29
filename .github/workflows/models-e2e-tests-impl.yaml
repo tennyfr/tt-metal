@@ -167,6 +167,9 @@ jobs:
           if [ -d "generated/benchmark_data" ]; then
             echo "has_benchmark_data=true" >> $GITHUB_OUTPUT
             python3 .github/scripts/data_analysis/create_benchmark_with_environment_json.py "${{ matrix.test-group.sku }}"
+          elif [ "${{ matrix.test-group.benchmark_data_required || false }}" = "true" ]; then
+            echo "::error::Benchmark data directory 'generated/benchmark_data' does not exist"
+            exit 1
           else
             echo "::warning::Benchmark data directory 'generated/benchmark_data' does not exist"
             echo "has_benchmark_data=false" >> $GITHUB_OUTPUT
@@ -184,9 +187,14 @@ jobs:
         if: ${{ !cancelled() && steps.save-environment-data.conclusion == 'success' && steps.save-environment-data.outputs.has_benchmark_data == 'true' }}
         shell: bash
         run: |
+          strict_missing=()
+          if [ "${{ matrix.test-group.benchmark_data_required || false }}" = "true" ]; then
+            strict_missing+=(--strict-missing)
+          fi
           python3 .github/scripts/utils/validate_perf_targets.py \
             --path-profile repo-root \
-            --sku "${{ matrix.test-group.sku }}"
+            --sku "${{ matrix.test-group.sku }}" \
+            "${strict_missing[@]}"
       - uses: tenstorrent/tt-metal/.github/actions/upload-artifact-with-job-uuid@main
         timeout-minutes: 10
         if: ${{ !cancelled() }}

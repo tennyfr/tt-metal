@@ -23,6 +23,7 @@
     pytest --timeout 600 "models/common/tests/demos/llama3_8b/demo.py::test_llama3_8b[wormhole_b0-performance-device_params0-eval-32-N150]"
   model: llama3.1-8b
   model_family: Llama
+  benchmark_data_required: true
   skus:
     wh_n150:
       timeout: 11
@@ -38,6 +39,7 @@
     pytest --timeout 600 "models/common/tests/demos/llama3_8b/demo.py::test_llama3_8b[wormhole_b0-performance-device_params0-eval-32-T3K]"
   model: llama3.1-8b
   model_family: Llama
+  benchmark_data_required: true
   skus:
     wh_llmbox_perf:
       timeout: 11

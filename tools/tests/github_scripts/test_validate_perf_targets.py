@@ -14,6 +14,7 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_PATH = REPO_ROOT / ".github/scripts/utils/validate_perf_targets.py"
+MODEL_E2E_WORKFLOW_PATH = REPO_ROOT / ".github/workflows/models-e2e-tests-impl.yaml"
 LLM_DEMO_UTILS_PATH = REPO_ROOT / "models/demos/utils/llm_demo_utils.py"
 
 
@@ -137,6 +138,58 @@ def test_validate_perf_targets_success(tmp_path):
 
     result = _run_validator(tmp_path)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_validate_perf_targets_strict_missing_requires_complete_benchmark_json(tmp_path):
+    (tmp_path / "models").mkdir(parents=True)
+    (tmp_path / "tests/pipeline_reorg").mkdir(parents=True)
+    (tmp_path / "models/model_targets.yaml").write_text(yaml.safe_dump({"version": 1, "targets": {}}), encoding="utf-8")
+    (tmp_path / "tests/pipeline_reorg/models_e2e_tests.yaml").write_text("[]\n", encoding="utf-8")
+
+    missing_directory = _run_validator(tmp_path, strict_missing=True)
+    assert missing_directory.returncode == 1
+    assert "::error::No complete benchmark JSON files found" in missing_directory.stdout
+
+    (tmp_path / "generated/benchmark_data").mkdir(parents=True)
+    empty_directory = _run_validator(tmp_path, strict_missing=True)
+    assert empty_directory.returncode == 1
+    assert "::error::No complete benchmark JSON files found" in empty_directory.stdout
+
+
+def test_validate_perf_targets_allows_no_benchmark_json_without_strict_missing(tmp_path):
+    (tmp_path / "models").mkdir(parents=True)
+    (tmp_path / "tests/pipeline_reorg").mkdir(parents=True)
+    (tmp_path / "models/model_targets.yaml").write_text(yaml.safe_dump({"version": 1, "targets": {}}), encoding="utf-8")
+    (tmp_path / "tests/pipeline_reorg/models_e2e_tests.yaml").write_text("[]\n", encoding="utf-8")
+
+    result = _run_validator(tmp_path)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_model_e2e_workflow_requires_and_strictly_validates_benchmark_data():
+    workflow = yaml.safe_load(MODEL_E2E_WORKFLOW_PATH.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["models-e2e-tests"]["steps"]
+    steps_by_name = {step.get("name"): step for step in steps}
+
+    save_environment = steps_by_name["Save environment data"]
+    assert 'if [ -d "generated/benchmark_data" ]; then' in save_environment["run"]
+    assert "matrix.test-group.benchmark_data_required" in save_environment["run"]
+    assert "::error::Benchmark data directory" in save_environment["run"]
+    assert "exit 1" in save_environment["run"]
+
+    validation = steps_by_name["Report and Validate Perf and Accuracy targets"]
+    assert "--strict-missing" in validation["run"]
+    assert "matrix.test-group.benchmark_data_required" in validation["run"]
+    assert "strict_missing=()" in validation["run"]
+    assert '"${strict_missing[@]}"' in validation["run"]
+    assert "has_benchmark_data" in validation["if"]
+
+    model_tests = yaml.safe_load((REPO_ROOT / "tests/pipeline_reorg/models_e2e_tests.yaml").read_text(encoding="utf-8"))
+    required_models = {test["name"] for test in model_tests if test.get("benchmark_data_required")}
+    assert required_models == {
+        "Llama 3.1-8B e2e tests (Wormhole N150 TTTv2)",
+        "Llama 3.1-8B e2e tests (Wormhole T3K TTTv2)",
+    }
 
 
 def test_validate_gap_coverage_accepts_concrete_dims_only_entry(tmp_path):

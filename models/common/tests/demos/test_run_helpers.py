@@ -305,6 +305,48 @@ def test_perf_benchmark_does_not_reprocess_blocking_sampled_output(monkeypatch):
     assert "process_decode_output_host" not in [name for name, _ in target.calls]
 
 
+def test_perf_benchmark_can_use_host_prefill_with_sampled_decode(monkeypatch):
+    target = FakeExecutionTarget(
+        compile_prefill_output=_logits([2]),
+        prefill_output=_logits([2]),
+        decode_outputs=[(torch.tensor([3]), None)],
+    )
+    times = iter([0.0, 0.1, 1.0, 1.1])
+    monkeypatch.setattr(run_helpers.time, "perf_counter", lambda: next(times))
+
+    result = run_perf_benchmark(
+        target,
+        tokens=torch.tensor([[1, 2]]),
+        kv_cache=[],
+        page_table=torch.zeros(1, 1, dtype=torch.int32),
+        num_decode_tokens=1,
+        sampling_params=object(),
+        prefill_sampling_params=None,
+    )
+
+    calls = {name: arguments for name, arguments in target.calls}
+    assert calls["compile_prefill"]["sampling_params"] is None
+    assert calls["prefill_forward"]["sampling_params"] is None
+    assert calls["compile_decode"]["sampling_params"] is not None
+    assert calls["decode_forward"]["sampling_params"] is not None
+    assert result.generated_token_ids == [[2, 3]]
+
+
+def test_composite_target_synchronizes_each_lane_mesh(monkeypatch):
+    target = SimpleNamespace(mesh_device="parent", mesh_devices=("lane-0", "lane-1"))
+    synchronized = []
+    monkeypatch.setattr(
+        run_helpers.ttnn,
+        "synchronize_device",
+        lambda mesh_device: synchronized.append(mesh_device),
+        raising=False,
+    )
+
+    run_helpers._synchronize_target(target)
+
+    assert synchronized == ["lane-0", "lane-1"]
+
+
 def test_repeat_batch_comparison_restores_source_order_and_passes_stable_streams():
     prompts = ["a", "b", "c"]
     token_streams = {"a": [1, 10], "b": [2, 20], "c": [3, 30]}

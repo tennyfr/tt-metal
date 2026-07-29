@@ -26,6 +26,7 @@ CI_PIPELINE_FILES = (
     REPO_ROOT / "tests/pipeline_reorg/models_sweep_tests.yaml",
 )
 HF_MODEL_RE = re.compile(r"HF_MODEL=([^\s]+)")
+LLAMA3_1_8B_T3K_MEASURED_TRACE_BYTES = 53_764_096
 
 
 def _iter_yaml_trace_region_entries():
@@ -82,13 +83,19 @@ def test_resolve_trace_region_size_matches_yaml(model_name, sku, expected_size):
     "model_name,legacy_sku,expected_size",
     [
         ("Llama-3.1-8B", "N150", 0),  # dynamic allocation, see #48636
-        ("Llama-3.1-8B", "T3K", 50000000),
+        ("Llama-3.1-8B", "T3K", 60000000),
         ("Llama-3.3-70B", "P150x4", 96000000),
         ("meta-llama/Llama-3.1-8B-Instruct", "bh_quietbox_2", 52000000),
     ],
 )
 def test_resolve_trace_region_size_legacy_sku_aliases(model_name, legacy_sku, expected_size):
     assert resolve_trace_region_size(model_name, legacy_sku) == expected_size
+
+
+def test_llama3_1_8b_t3k_trace_region_covers_measured_requirement():
+    configured_size = resolve_trace_region_size("Llama-3.1-8B", "T3K")
+
+    assert configured_size >= LLAMA3_1_8B_T3K_MEASURED_TRACE_BYTES
 
 
 def test_resolve_trace_region_size_unconfigured_defaults_to_dynamic():
@@ -175,7 +182,7 @@ def test_resolve_gemma4_config_path_aliases(model_path, sku, expected_size):
         (
             "/mnt/MLPerf/huggingface/hub/models--google--gemma-3-27b-it/snapshots/005ad3404e59d6023443cb575daa05336842228a",
             "wh_llmbox_perf",
-            30000000,
+            30100000,
         ),
         (
             "/mnt/MLPerf/huggingface/hub/models--google--gemma-3-4b-it/snapshots/093f9f388b31de276ce2de164bdc2081324b9767",

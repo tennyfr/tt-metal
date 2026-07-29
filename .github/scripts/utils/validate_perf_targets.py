@@ -806,8 +806,9 @@ def main() -> int:
     _write_step_summary(summary)
 
     if result.num_benchmark_files == 0:
-        print(f"::warning::No benchmark JSON files found under {benchmark_dir}")
-        return 0
+        level = "::error::" if args.strict_missing else "::warning::"
+        print(f"{level}No complete benchmark JSON files found under {benchmark_dir}")
+        return 1 if args.strict_missing else 0
 
     for failure in result.hard_failures:
         print(f"::error::{failure}")

@@ -14,6 +14,8 @@ from loguru import logger
 
 import ttnn
 
+_SAME_SAMPLING_PARAMS = object()
+
 
 @dataclass
 class TeacherForceResult:
@@ -113,6 +115,7 @@ def _compile_prefill_and_decode(
     empty_slots: list[int] | None = None,
     start_pos: torch.Tensor | None = None,
     sampling_params=None,
+    prefill_sampling_params=_SAME_SAMPLING_PARAMS,
 ) -> None:
     """Compile the concrete prefill and decode cases through the public target surface."""
     assert prefill_tokens.dim() == 2, f"prefill_tokens must be [batch_size, seq_len], got {prefill_tokens.dim()}D"
@@ -127,6 +130,9 @@ def _compile_prefill_and_decode(
         dtype=torch.long,
         device=prefill_tokens.device,
     )
+
+    if prefill_sampling_params is _SAME_SAMPLING_PARAMS:
+        prefill_sampling_params = sampling_params
 
     if sampling_params is not None:
         execution_target.compile_decode(
@@ -143,7 +149,7 @@ def _compile_prefill_and_decode(
             prompt_lens=prompt_lens,
             empty_slots=empty_slots,
             start_pos=start_pos,
-            sampling_params=sampling_params,
+            sampling_params=prefill_sampling_params,
         )
         return
 
@@ -288,6 +294,12 @@ def _target_cluster_shape(execution_target):
 
 
 def _synchronize_target(execution_target):
+    mesh_devices = getattr(execution_target, "mesh_devices", None)
+    if mesh_devices is not None:
+        for mesh_device in mesh_devices:
+            if mesh_device is not None:
+                ttnn.synchronize_device(mesh_device)
+        return
     mesh_device = _target_mesh_device(execution_target)
     if mesh_device is not None:
         ttnn.synchronize_device(mesh_device)
@@ -377,6 +389,7 @@ def run_perf_benchmark(
     prompt_lens: torch.Tensor | None = None,
     start_pos: list[int] | None = None,
     sampling_params=None,
+    prefill_sampling_params=_SAME_SAMPLING_PARAMS,
     pipeline_readback: bool = False,
     profiler=None,
 ) -> PerfBenchmarkResult:
@@ -398,6 +411,8 @@ def run_perf_benchmark(
     max_batch_size = max(max_batch_size, batch_size)
     cluster_shape = _target_cluster_shape(execution_target)
     prompt_lens = prompt_lens if prompt_lens is not None else torch.tensor([prompt_len] * batch_size)
+    if prefill_sampling_params is _SAME_SAMPLING_PARAMS:
+        prefill_sampling_params = sampling_params
     prefill_kwargs = dict(
         page_table=page_table,
         kv_cache=kv_cache,
@@ -419,12 +434,17 @@ def run_perf_benchmark(
         empty_slots=list(range(batch_size)),
         start_pos=start_pos,
         sampling_params=sampling_params,
+        prefill_sampling_params=prefill_sampling_params,
     )
 
     _profiler_start(profiler, "inference_prefill")
     try:
         start_time = time.perf_counter()
-        prefill_output = execution_target.prefill_forward(tokens, **prefill_kwargs, sampling_params=sampling_params)
+        prefill_output = execution_target.prefill_forward(
+            tokens,
+            **prefill_kwargs,
+            sampling_params=prefill_sampling_params,
+        )
         _synchronize_target(execution_target)
         prefill_time = time.perf_counter() - start_time
     finally:

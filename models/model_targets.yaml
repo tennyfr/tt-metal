@@ -503,28 +503,31 @@ targets:
             sampling_mode: host
             optimization_profile: performance
             workload: batch-1
-            status: TODO
-            perf: {}
+            status: active
+            perf:
+              decode_t/s/u: 26.1
+              prefill_time_to_first_token: 110.3
             accuracy: {}
-            note: "TTTv2 host-sampling perf target needs three-sample median/range measurement on wh_n150."
           - batch_size: 1
             seq_len: 1024
             sampling_mode: on_device_topk
             optimization_profile: performance
             workload: batch-1
-            status: TODO
-            perf: {}
+            status: active
+            perf:
+              decode_t/s/u: 30.0
+              prefill_time_to_first_token: 100.4
             accuracy: {}
-            note: "TTTv2 on-device-sampling perf target needs three-sample median/range measurement on wh_n150."
           - batch_size: 32
             seq_len: 1024
             sampling_mode: host
             optimization_profile: performance
             workload: batch-32
-            status: TODO
-            perf: {}
+            status: active
+            perf:
+              decode_t/s/u: 23.6
+              prefill_time_to_first_token: 38.0
             accuracy: {}
-            note: "TTTv2 host-sampling perf target needs three-sample median/range measurement on wh_n150."
           - batch_size: 32
             seq_len: 1024
             sampling_mode: on_device_topk
@@ -532,10 +535,49 @@ targets:
             workload: batch-32
             status: active
             perf:
-              decode_t/s/u: 8.81
-              prefill_time_to_first_token: 177.1
+              decode_t/s/u: 27.1
+              prefill_time_to_first_token: 39.4
             accuracy: {}
-            note: "Seeded from the existing TTTv2 8B demo parity gate; replace after three-sample cold/warm measurement."
+          - batch_size: 1
+            seq_len: 1024
+            sampling_mode: host
+            optimization_profile: accuracy
+            workload: batch-1
+            status: active
+            perf:
+              decode_t/s/u: 23.8
+              prefill_time_to_first_token: 135.5
+            accuracy: {}
+          - batch_size: 1
+            seq_len: 1024
+            sampling_mode: on_device_topk
+            optimization_profile: accuracy
+            workload: batch-1
+            status: active
+            perf:
+              decode_t/s/u: 27.0
+              prefill_time_to_first_token: 125.1
+            accuracy: {}
+          - batch_size: 32
+            seq_len: 1024
+            sampling_mode: host
+            optimization_profile: accuracy
+            workload: batch-32
+            status: active
+            perf:
+              decode_t/s/u: 21.7
+              prefill_time_to_first_token: 43.0
+            accuracy: {}
+          - batch_size: 32
+            seq_len: 1024
+            sampling_mode: on_device_topk
+            optimization_profile: accuracy
+            workload: batch-32
+            status: active
+            perf:
+              decode_t/s/u: 24.7
+              prefill_time_to_first_token: 44.4
+            accuracy: {}
           - batch_size: 32
             seq_len: 2048
             sampling_mode: host
@@ -638,28 +680,32 @@ targets:
             sampling_mode: host
             optimization_profile: performance
             workload: batch-1
-            status: TODO
-            perf: {}
+            status: active
+            perf:
+              decode_t/s/u: 17.1
+              prefill_time_to_first_token: 40.1
+              decode_t_s_u_tolerance: 0.35
             accuracy: {}
-            note: "TTTv2 host-sampling perf target needs three-sample median/range measurement on wh_llmbox_perf."
           - batch_size: 1
             seq_len: 1024
             sampling_mode: on_device_topk
             optimization_profile: performance
             workload: batch-1
-            status: TODO
-            perf: {}
+            status: active
+            perf:
+              decode_t/s/u: 72.0
+              prefill_time_to_first_token: 41.7
             accuracy: {}
-            note: "TTTv2 on-device-sampling perf target needs three-sample median/range measurement on wh_llmbox_perf."
           - batch_size: 32
             seq_len: 1024
             sampling_mode: host
             optimization_profile: performance
             workload: batch-32
-            status: TODO
-            perf: {}
+            status: active
+            perf:
+              decode_t/s/u: 18.0
+              prefill_time_to_first_token: 18.2
             accuracy: {}
-            note: "TTTv2 host-sampling perf target needs three-sample median/range measurement on wh_llmbox_perf."
           - batch_size: 32
             seq_len: 1024
             sampling_mode: on_device_topk
@@ -667,28 +713,90 @@ targets:
             workload: batch-32
             status: active
             perf:
-              decode_t/s/u: 56.1
-              prefill_time_to_first_token: 39.9
+              decode_t/s/u: 68.1
+              prefill_time_to_first_token: 18.0
             accuracy: {}
-            note: "Seeded from the existing TTTv2 8B demo parity gate; replace after three-sample cold/warm measurement."
           - batch_size: 32
             seq_len: 2048
             sampling_mode: host
             optimization_profile: performance
             workload: batch-32-ci
-            status: TODO
-            perf: {}
+            status: active
+            perf:
+              decode_t/s/u: 17.6
+              prefill_time_to_first_token: 18.4
             accuracy: {}
-            note: "TTTv2 host-sampling batch-32-ci target needs sequence-capacity confirmation and three-sample median/range measurement on wh_llmbox_perf."
           - batch_size: 32
             seq_len: 2048
             sampling_mode: on_device_topk
             optimization_profile: performance
             workload: batch-32-ci
-            status: TODO
-            perf: {}
+            status: active
+            perf:
+              decode_t/s/u: 65.4
+              prefill_time_to_first_token: 17.8
             accuracy: {}
-            note: "TTTv2 on-device-sampling batch-32-ci target needs sequence-capacity confirmation and three-sample median/range measurement on wh_llmbox_perf."
+          - batch_size: 1
+            seq_len: 1024
+            sampling_mode: host
+            optimization_profile: accuracy
+            workload: batch-1
+            status: active
+            perf:
+              decode_t/s/u: 17.4
+              prefill_time_to_first_token: 42.2
+            accuracy: {}
+          - batch_size: 1
+            seq_len: 1024
+            sampling_mode: on_device_topk
+            optimization_profile: accuracy
+            workload: batch-1
+            status: active
+            perf:
+              decode_t/s/u: 69.6
+              prefill_time_to_first_token: 43.6
+            accuracy: {}
+          - batch_size: 32
+            seq_len: 1024
+            sampling_mode: host
+            optimization_profile: accuracy
+            workload: batch-32
+            status: active
+            perf:
+              decode_t/s/u: 15.1
+              prefill_time_to_first_token: 18.0
+              decode_t_s_u_tolerance: 0.25
+            accuracy: {}
+          - batch_size: 32
+            seq_len: 1024
+            sampling_mode: on_device_topk
+            optimization_profile: accuracy
+            workload: batch-32
+            status: active
+            perf:
+              decode_t/s/u: 65.9
+              prefill_time_to_first_token: 18.2
+            accuracy: {}
+          - batch_size: 32
+            seq_len: 2048
+            sampling_mode: host
+            optimization_profile: accuracy
+            workload: batch-32-ci
+            status: active
+            perf:
+              decode_t/s/u: 15.3
+              prefill_time_to_first_token: 18.1
+            accuracy: {}
+          - batch_size: 32
+            seq_len: 2048
+            sampling_mode: on_device_topk
+            optimization_profile: accuracy
+            workload: batch-32-ci
+            status: active
+            perf:
+              decode_t/s/u: 63.4
+              prefill_time_to_first_token: 18.3
+            accuracy: {}
       wh_galaxy_perf:
         entries:
           - batch_size: 1
