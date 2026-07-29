@@ -183,7 +183,7 @@ jobs:
               "output_dir": "generated/ai_summaries"
             }
           api-key: ${{ secrets.TT_CHAT_API_KEY }}
-          api-url: ${{ secrets.TT_CHAT_URL }}
+          api-url: ${{ secrets.TT_CHAT_URL }}/v1
           job-name: ${{ matrix.test-group.name }}
       - uses: tenstorrent/tt-metal/.github/actions/cleanup@main
         if: always()

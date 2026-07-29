@@ -1,0 +1,242 @@
+You are a CI failure analyst. Analyze the following CI log and provide a structured summary.
+
+## KNOWN FAILURE CATEGORIES
+  - runtime:exception: Unhandled Python exception in any component — LLM determines actual layer and category (patterns: Traceback (most recent call last), AssertionError, RuntimeError)
+  - infra:machine: Physical machine or runner issues (patterns: runner crash, disk full, No space left on device, OOM, Out of memory)
+  - infra:ci: CI/CD pipeline issues (patterns: workflow failed, job dispatch, artifact download, docker pull, image not found)
+  - infra:network: Network connectivity issues (patterns: connection refused, connection timed out, network unreachable, DNS, SSL)
+  - hw:device: Device detection/initialization issues (patterns: tt-smi, device not found, No chips detected, chip not detected, ttSiliconDevice)
+  - hw:umd: UMD (User Mode Driver) issues (patterns: umd, UMD, tt_device, pcie, PCIE)
+  - hw:fabric: Ethernet/fabric link issues (patterns: eth link, ethernet, link training, fabric init)
+  - tt-metal:trace: Trace buffer allocation failures (patterns: trace buffers of size, allocated for trace region, trace_region_size, mesh_trace.cpp)
+  - tt-metal:device: Device detection/initialization failures (patterns: No chips detected, tt_cluster.cpp, device initialization, physical_device_id, MeshDevice)
+  - tt-metal:dispatch: Command dispatch/queue issues (patterns: dispatch timeout, CommandQueue, DISPATCH_TIMEOUT, EnqueueProgram, command_queue)
+  - tt-metal:memory: Device memory allocation issues (patterns: allocation failed, buffer allocation, out of memory, DRAM, L1)
+  - tt-metal:compile: Kernel compilation issues (patterns: TT_THROW, TT_FATAL, compile error, kernel compilation, not declared in this scope)
+  - tt-metal:fabric: Multi-chip fabric/mesh issues (patterns: fabric, ethernet, mesh timeout, chip-to-chip)
+  - vllm:engine: vLLM engine initialization/runtime errors (patterns: EngineCore, AsyncLLMEngine, LLMEngine, engine.py, run_mp_engine)
+  - vllm:worker: vLLM worker process errors (patterns: WorkerProc, worker, multiprocessing, Error in worker)
+  - vllm:config: vLLM configuration errors (patterns: max_model_len, max_num_seqs, block_size, scheduler, override_tt_config)
+  - vllm:connection: vLLM server connection errors (patterns: ConnectionError, HTTPConnectionPool, Max retries exceeded, port 8000, connection refused)
+  - app:cli: CLI argument/startup errors (patterns: error: unrecognized arguments, error: invalid choice, error: the following arguments are required, argparse, usage:)
+  - app:server: Inference server startup/runtime errors (patterns: inference-server, server startup, server failed, [SERVER])
+  - app:api: API/endpoint errors (patterns: HTTP, endpoint, request failed, API error)
+  - app:cache: Model cache generation issues (patterns: Cache generation, cache timeout, cache failed)
+  - ttnn:op: TTNN operator errors (patterns: ttnn::, operation failed, op constraint)
+  - ttnn:shape: Tensor shape/layout errors (patterns: shape mismatch, dimension, layout)
+  - model:load: Model loading errors (patterns: model load, checkpoint, from_pretrained, safetensors)
+  - model:accuracy: Model accuracy/correctness errors (patterns: PCC, accuracy, mismatch, AllClose)
+
+If the failure doesn't match any known category, output category as "UNKNOWN" and provide the unknown_pattern field with the error pattern you found.
+
+## STACK LAYERS (from low to high)
+  - framework: TT-Metal framework layer (paths: /tt_metal/, /ttnn/cpp/, mesh_trace.cpp)
+  - operations: TTNN operations layer (paths: /ttnn/operations/, op_library)
+  - model: Model implementations (paths: /models/, /tt-train/)
+  - serving: vLLM serving layer (paths: /vllm/, site-packages/vllm, engine.py)
+  - application: Application layer (paths: /tt-inference-server/, [SERVER], inference)
+
+## CONTEXT
+
+
+
+
+## EXTRACTED LOG
+============================================================
+JOB CONTEXT
+============================================================
+(no job context found)
+
+============================================================
+ERROR SECTIONS (3 found)
+============================================================
+
+--- Error Section 1 ---
+4565: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_tilized_nd_sharded_to_nd_sharded[shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[7, 32, 64]-input_nd_shard_shape=[3, 32, 64]-input_grid={[0-0 - 2-0]}-output_nd_shard_shape=[4, 32, 64]-output_grid={[0-0 - 1-0]}]
+4566: tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_tilized_nd_sharded_to_nd_sharded[shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[4, 64, 128]-input_nd_shard_shape=[2, 32, 64]-input_grid={[0-0 - 7-0]}-output_nd_shard_shape=[2, 64, 64]-output_grid={[0-0 - 3-0]}]
+4567: [gw1] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_multiple_dims[input_shape=(3, 1, 1, 1, 1280)-dims=[1, 2, 3]-layout=Layout.ROW_MAJOR]
+4568: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_multiple_dims[input_shape=(3, 1, 1, 1, 1280)-dims=[1, 2, 3]-layout=Layout.TILE]
+4569: [gw1] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_multiple_dims[input_shape=(3, 1, 1, 1, 1280)-dims=[1, 2, 3]-layout=Layout.TILE]
+4570: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[4]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+4571: [gw1] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[4]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+4572: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[4]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+4573: [gw1] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[4]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+4574: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[-5]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+4575: [gw1] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[-5]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+4576: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[-5]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+4577: [gw1] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[-5]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+4578: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, 0]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+4579: [gw3] PASSED tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.float32, DataType.FLOAT32)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::DRAM,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(5, 4, 208, 156)-output_shape=(3, 13, 8, 2080)]
+4580: [gw0] PASSED tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_tilize_with_zero_padding_2D[W=1024-H=128-use_multicore=True-in_dtype=DataType.INT32]
+4581: tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_tilize_with_zero_padding_2D[W=1024-H=128-use_multicore=True-in_dtype=DataType.UINT32]
+4582: tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.float32, DataType.FLOAT32)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::DRAM,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(22, 23, 1)-output_shape=(1, 22, 23)]
+4583: [gw1] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, 0]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+4584: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, 0]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+4585: [gw2] PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_tilized_nd_sharded_to_nd_sharded[shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[4, 64, 128]-input_nd_shard_shape=[2, 32, 64]-input_grid={[0-0 - 7-0]}-output_nd_shard_shape=[2, 64, 64]-output_grid={[0-0 - 3-0]}]
+4586: tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_tilized_nd_sharded_to_nd_sharded[shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[4, 2, 64, 128]-input_nd_shard_shape=[2, 1, 32, 64]-input_grid={[0-0 - 7-1]}-output_nd_shard_shape=[4, 2, 32, 64]-output_grid={[0-0 - 3-0]}]
+4587: [gw1] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, 0]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+4588: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, -4]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+4589: [gw1] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, -4]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+4590: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, -4]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+4591: [gw1] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, -4]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+4592: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_padded_shape_integrity[input_shape=(1, 1, 1, 256)-dims=[0, 1]-layout=Layout.ROW_MAJOR]
+4593: [gw1] PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_padded_shape_integrity[input_shape=(1, 1, 1, 256)-dims=[0, 1]-layout=Layout.ROW_MAJOR]
+4594: tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_padded_shape_integrity[input_shape=(1, 1, 1, 256)-dims=[0, 1]-layout=Layout.TILE]
+
+--- Error Section 2 ---
+14778: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_multiple_dims[input_shape=(1, 1, 480, 640)-dims=[0, 1]-layout=Layout.ROW_MAJOR]
+14779: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_multiple_dims[input_shape=(1, 1, 480, 640)-dims=[0, 1]-layout=Layout.TILE]
+14780: PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_tilized_nd_sharded_to_nd_sharded[shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[7, 32, 64]-input_nd_shard_shape=[3, 32, 64]-input_grid={[0-0 - 2-0]}-output_nd_shard_shape=[4, 32, 64]-output_grid={[0-0 - 1-0]}]
+14781: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_multiple_dims[input_shape=(3, 1, 1, 1, 1280)-dims=[1, 2, 3]-layout=Layout.ROW_MAJOR]
+14782: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_multiple_dims[input_shape=(3, 1, 1, 1, 1280)-dims=[1, 2, 3]-layout=Layout.TILE]
+14783: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[4]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+14784: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[4]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+14785: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[-5]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+14786: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[-5]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+14787: PASSED tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.float32, DataType.FLOAT32)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::DRAM,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(5, 4, 208, 156)-output_shape=(3, 13, 8, 2080)]
+14788: PASSED tests/ttnn/unit_tests/base_functionality/test_tilize_untilize_2D.py::test_tilize_with_zero_padding_2D[W=1024-H=128-use_multicore=True-in_dtype=DataType.INT32]
+14789: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, 0]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+14790: PASSED tests/ttnn/unit_tests/base_functionality/test_copy.py::test_copy_tilized_nd_sharded_to_nd_sharded[shard_orientation=ShardOrientation.ROW_MAJOR-tensor_shape=[4, 64, 128]-input_nd_shard_shape=[2, 32, 64]-input_grid={[0-0 - 7-0]}-output_nd_shard_shape=[2, 64, 64]-output_grid={[0-0 - 3-0]}]
+14791: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, 0]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+14792: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, -4]-expected_exception=<class 'RuntimeError'>-layout=Layout.ROW_MAJOR]
+14793: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_error_cases[input_shape=(1, 1, 1, 256)-dims=[0, -4]-expected_exception=<class 'RuntimeError'>-layout=Layout.TILE]
+14794: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_padded_shape_integrity[input_shape=(1, 1, 1, 256)-dims=[0, 1]-layout=Layout.ROW_MAJOR]
+14795: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_padded_shape_integrity[input_shape=(1, 1, 1, 256)-dims=[0, 1]-layout=Layout.TILE]
+14796: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_padded_shape_integrity[input_shape=(1, 1, 480, 640)-dims=[0]-layout=Layout.ROW_MAJOR]
+14797: PASSED tests/ttnn/unit_tests/base_functionality/test_squeeze.py::test_squeeze_padded_shape_integrity[input_shape=(1, 1, 480, 640)-dims=[0]-layout=Layout.TILE]
+
+--- Error Section 3 ---
+18988: XFAIL tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.int32, DataType.UINT32)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::L1,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(1, 1500, 1, 512)-output_shape=(1, 1500, 8, 64)] - Test case is too big for L1
+18989: XFAIL tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.float32, DataType.FLOAT32)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::L1,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(2888, 49, 96)-output_shape=(8, 19, 19, 7, 7, 96)] - Test case is too big for L1
+18990: XFAIL tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.float32, DataType.FLOAT32)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::L1,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(1, 1500, 1, 512)-output_shape=(1, 1500, 8, 64)] - Test case is too big for L1
+18991: XFAIL tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.bfloat16, DataType.BFLOAT16)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::L1,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(2888, 49, 96)-output_shape=(8, 19, 19, 7, 7, 96)] - Test case is too big for L1
+18992: XFAIL tests/ttnn/unit_tests/base_functionality/test_reshape.py::test_reshape_tile[dtype=(torch.bfloat16, DataType.BFLOAT16)-layout=Layout.TILE-memory_config=MemoryConfig(memory_layout=TensorMemoryLayout::INTERLEAVED,buffer_type=BufferType::L1,shard_spec=std::nullopt,nd_shard_spec=std::nullopt,created_with_nd_shard_spec=0)-input_shape=(1, 1500, 1, 512)-output_shape=(1, 1500, 8, 64)] - Test case is too big for L1
+18993: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[dram-non_tile_aligned_h_only] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+18994: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[dram-non_tile_aligned_h_multi_shard] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+18995: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[dram-non_tile_aligned_with_outer_dim] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+18996: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[dram-non_tile_aligned_tensor_uneven_nd_multi_per_core] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+18997: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[l1-non_tile_aligned_h_only] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+18998: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[l1-non_tile_aligned_h_multi_shard] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+18999: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[l1-non_tile_aligned_with_outer_dim] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+19000: XFAIL tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_interleaved_to_nd_sharded_tile_to_rm[l1-non_tile_aligned_tensor_uneven_nd_multi_per_core] - TT_FATAL: "Output memory config layout must be INTERLEAVED but got ..." (untilize_with_unpadding does not support interleaved-input -> sharded-output).
+19001: XFAIL tests/ttnn/unit_tests/tensor/test_tensor_conversion.py::test_tensor_conversion_with_python_dtype[python_lib=torch-shape=(2, 3, 64, 96)-python_dtype_str=int64-convert_to_device=True] - int64 dtype is incorrectly handled in ttnn tensors, so roundtrip tests are not working!
+19002: XFAIL tests/ttnn/unit_tests/tensor/test_tensor_conversion.py::test_tensor_conversion_with_python_dtype[python_lib=torch-shape=(2, 3, 64, 96)-python_dtype_str=int64-convert_to_device=False] - int64 dtype is incorrectly handled in ttnn tensors, so roundtrip tests are not working!
+19003: XFAIL tests/ttnn/unit_tests/tensor/test_tensor_conversion.py::test_tensor_conversion_with_python_dtype[python_lib=torch-shape=(2, 3, 64, 96)-python_dtype_str=float16-convert_to_device=True] - float16 dtype is incorrectly handled in ttnn tensors, so roundtrip tests are not working!
+19004: XFAIL tests/ttnn/unit_tests/tensor/test_tensor_conversion.py::test_tensor_conversion_with_python_dtype[python_lib=torch-shape=(2, 3, 64, 96)-python_dtype_str=float16-convert_to_device=False] - float16 dtype is incorrectly handled in ttnn tensors, so roundtrip tests are not working!
+19005: XFAIL tests/ttnn/unit_tests/tensor/test_tensor_conversion.py::test_tensor_conversion_with_python_dtype[python_lib=numpy-shape=(2, 3, 64, 96)-python_dtype_str=int64-convert_to_device=True] - int64 dtype is incorrectly handled in ttnn tensors, so roundtrip tests are not working!
+
+============================================================
+DEDUPLICATED WARNINGS (showing count)
+============================================================
+  [33x] | WARNING  | tests.scripts.common:get_updated_device_params:278 - ROW dispatch requires both fabric ...
+  [18x] /work/ttnn/cpp/ttnn/operations/matmul/device/kernels/compute/bmm_large_block_zm_fused_bias_activatio...
+  [12x] | WARNING  | ttnn.graph:begin_graph_capture:257 - Graph capture started with enable_fast_runtime_mod...
+  [9x] /work/ttnn/cpp/ttnn/operations/matmul/device/kernels/compute/bmm_large_block_zm_fused_bias_activatio...
+  [9x] ##[warning]Unknown config option: timeout...
+  [4x] | WARNING  | tests.ttnn.conftest:pytest_collection_modifyitems:45 - Fast Runtime Mode is ON. Skippin...
+  [3x] /work/ttnn/cpp/ttnn/operations/conv/conv2d/device/kernels/conv_bmm_tilize.cpp:N:55: warning: 'void c...
+  [3x] /work/ttnn/cpp/ttnn/operations/conv/conv2d/device/kernels/conv_bmm_tilize.cpp:N:40: warning: 'void c...
+  [3x] tests/ttnn/unit_tests/base_functionality/test_torch_conversion.py::test_from_torch_conversion_with_f...
+
+============================================================
+FINAL STATUS
+============================================================
+PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_tile_to_rm[shard_orientation=ShardOrientation.ROW_MAJOR-output_memory_mode=same_shard-uneven_in_collapsed_out]
+PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_tile_to_rm[shard_orientation=ShardOrientation.ROW_MAJOR-output_memory_mode=same_shard-uneven_inner_same_1shard_per_core]
+PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_tile_to_rm[shard_orientation=ShardOrientation.ROW_MAJOR-output_memory_mode=same_shard-uneven_inner_same_multi_shard_per_core]
+PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_tile_to_rm[shard_orientation=ShardOrientation.ROW_MAJOR-output_memory_mode=same_shard-uneven_all_dims_same_1shard_per_core]
+PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_tile_to_rm[shard_orientation=ShardOrientation.ROW_MAJOR-output_memory_mode=same_shard-uneven_all_dims_same_multi_shard_per_core]
+PASSED tests/ttnn/unit_tests/base_functionality/test_to_layout.py::test_to_layout_nd_sharded_tile_to_rm[shard_orientation=ShardOrientation.ROW_MAJOR-output_memory_mode=same_shard-uneven_all_dims_same_2shards_per_core]
+
+
+XFAIL tests/ttnn/unit_tests/tensor/test_tensor_conversion.py::test_tensor_conversion_with_python_dtype[python_lib=numpy-shape=(2, 3, 64, 96)-python_dtype_str=int64-convert_to_device=False] - int64 dtype is incorrectly handled in ttnn tensors, so roundtrip tests are not working!
+==== 5458 passed, 598 skipped, 21 xfailed, 6 warnings in 1518.08s (0:25:18) ====
+/opt/venv/lib/python3.10/site-packages/pytest_benchmark/logger.py:44: PytestBenchmarkWarning: Benchmarks are automatically disabled because xdist plugin is active.Benchmarks cannot be performed reliably in a parallelized environment.
+  warner(PytestBenchmarkWarning(text))
+tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_per_core_sharded_dealloc_realloc
+tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_per_core_and_lockstep_coexist
+[gw2] PASSED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_per_core_tensors_get_same_address
+tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_per_core_round_trip
+[gw3] PASSED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_per_core_and_lockstep_coexist
+[gw2] PASSED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_per_core_round_trip
+tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_all_cores_lockstep_then_per_core_then_reverse
+[gw0] PASSED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_per_core_sharded_dealloc_realloc
+[gw1] PASSED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_triangle_allocation_then_uniform_sharded
+tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_per_core_tetris_allocation
+[gw0] PASSED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_per_core_tetris_allocation
+tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation_multi_device.py::test_per_core_independent_addresses_across_devices
+tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation_multi_device.py::test_per_core_then_lockstep_no_overlap
+[gw0] SKIPPED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation_multi_device.py::test_divergent_per_device_then_lockstep
+[gw1] SKIPPED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation_multi_device.py::test_divergent_multi_core_per_device_then_lockstep
+[gw3] PASSED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_all_cores_lockstep_then_per_core_then_reverse
+tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation_multi_device.py::test_lockstep_then_per_core_no_overlap
+[gw3] SKIPPED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation_multi_device.py::test_lockstep_then_per_core_no_overlap
+0.00s setup    tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation_multi_device.py::test_multi_core_per_core_all_cores
+=========================== short test summary info ============================
+PASSED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_per_core_tensors_get_same_address
+PASSED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_per_core_and_lockstep_coexist
+PASSED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_per_core_round_trip
+PASSED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_per_core_sharded_dealloc_realloc
+PASSED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_triangle_allocation_then_uniform_sharded
+PASSED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_per_core_tetris_allocation
+PASSED tests/ttnn/unit_tests/per_core_allocation/test_per_core_allocation.py::test_all_cores_lockstep_then_per_core_then_reverse
+
+
+
+[OUTCOME: CRASHED - job did not complete]
+[Extracted 109/19159 lines]
+
+## YOUR TASK
+Analyze the log and return a JSON object with these fields:
+
+```json
+{
+  "status": "CRASH",  // must be exactly one of: CRASH, TESTS_FAILED, EVALS_BELOW_TARGET, SUCCESS
+
+  "category": "<category_id or UNKNOWN>",
+  "subcategory": "<specific sub-type if applicable>",
+  "unknown_pattern": "<if UNKNOWN, the error pattern you found>",
+
+  "layer": "<driver|framework|operations|model|serving|application>",
+  "problematic_layer": "<layer that CAUSED the error, may differ from layer where it manifested>",
+  "file": "<specific file if identifiable>",
+
+  "is_your_code": <true|false|null>,
+  "pr_files_in_stack": ["<list of PR files that appear in stack trace>"],
+
+  "root_cause": "<1-2 sentence description of what went wrong>",
+  "error_message": "<single line - the exact error message to search for in logs>",
+  "failed_tests": ["<list of failed test names>"],
+
+  "suggested_action": "<SHORT action - what to do>",
+  "confidence": "<high|medium|low>"
+}
+```
+
+IMPORTANT:
+- Set `status` to one of exactly these values:
+  * CRASH: The process itself failed — server startup error, TT_FATAL, exception, import error, argparse error, OOM kill. No tests ran.
+  * TESTS_FAILED: The server started and ran, but one or more tests failed with actual test failures.
+  * EVALS_BELOW_TARGET: The server ran and tests passed, but eval accuracy/benchmark scores are below target thresholds.
+  * SUCCESS: Everything passed.
+  NOTE: if the server failed to start (argparse error, import error, health check never passed), use CRASH — not TESTS_FAILED — even if "workflow:benchmarks" or "workflow:evals" appear as failed in the log. Those are downstream timeouts, not real test failures.
+- ERROR PRECEDENCE - Root causes vs symptoms:
+  * Server startup failures (argparse errors like "unrecognized arguments", import errors, config parsing errors) are ROOT CAUSES
+  * Health check timeouts ("did not become healthy within Xs") are SYMPTOMS of the server not starting
+  * Connection refused errors are SYMPTOMS of the server not running
+  * Always identify the EARLIEST error that caused the cascade - if server failed to start, that's the root cause, not the timeout
+  * Error Section 1 in the log is typically the earliest/primary error
+- If the job completed and only evals failed, do NOT report warnings or info messages as the error - report the actual eval failures
+- Set is_your_code to true ONLY if files from the PR/branch appear in the error stack trace
+- Set is_your_code to false if the error is in infrastructure/framework code
+- Set is_your_code to null if you can't determine
+- If the category is UNKNOWN, make sure to fill unknown_pattern so we can add it later
+- Be specific in root_cause - include device IDs, timeouts, specific error codes when relevant
+- Keep suggested_action SHORT but SPECIFIC - include actual parameter names and example values when applicable
+- error_message must be a SINGLE LINE that can be searched in the log
+- Set problematic_layer to the layer that SET the config causing the error (e.g., if max_model_len from serving layer caused a framework crash, problematic_layer="serving")
+- When suggesting fixes for config parameters, USE THE CONFIGURATION CONTEXT above to determine the correct way to set parameters (e.g., use override_tt_config instead of environment variables if that's how other runs configure it)
+
+REQUIRED: `status` must be exactly one of: "CRASH", "TESTS_FAILED", "EVALS_BELOW_TARGET", "SUCCESS". No other values are valid.
+
+Return ONLY the JSON object, no other text.
